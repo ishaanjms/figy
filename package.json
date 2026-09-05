@@ -3,7 +3,9 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "autostart:install": "bash scripts/install-autostart.sh",
+    "autostart:uninstall": "bash scripts/uninstall-autostart.sh"
   },
   "dependencies": {
     "@langchain/community": "^0.3.55",

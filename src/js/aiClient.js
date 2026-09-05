@@ -1,4 +1,15 @@
-const figyChatApiUrls = ["/api/chat", "http://127.0.0.1:4317/api/chat"];
+const figyChatApiUrls = getFigyChatApiUrls();
+
+function getFigyChatApiUrls() {
+  const urls = ["/api/chat"];
+  const isLocalPage = ["", "localhost", "127.0.0.1"].includes(window.location.hostname);
+
+  if (isLocalPage && window.location.port !== "4317") {
+    urls.push("http://127.0.0.1:4317/api/chat");
+  }
+
+  return urls;
+}
 
 async function requestAIReply(messages) {
   let lastError = null;

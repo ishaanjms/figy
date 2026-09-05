@@ -9,6 +9,10 @@ function sendJson(res, statusCode, payload) {
 }
 
 function readJsonBody(req) {
+  if (req.body) {
+    return Promise.resolve(typeof req.body === "string" ? JSON.parse(req.body) : req.body);
+  }
+
   return new Promise((resolve, reject) => {
     let body = "";
 
