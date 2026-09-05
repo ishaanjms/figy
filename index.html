@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Figy</title>
+  <link rel="stylesheet" href="src/styles/main.css">
+</head>
+
+<body>
+  <div id="fileHeader">
+    <input id="fileName" type="text" value="Untitled" aria-label="File name" maxlength="80">
+  </div>
+
+  <div id="toolbar">
+    <button id="selectTool" class="tool-button" title="Select" aria-label="Select tool">
+      <img class="select-tool-icon" src="assets/basil_cursor-solid.svg" alt="">
+      Select
+    </button>
+    <button id="panTool" class="tool-button" title="Pan" aria-label="Pan tool">
+      <img class="pan-tool-icon" src="assets/Vector.svg" alt="">
+      Pan
+    </button>
+    <span class="toolbar-divider" aria-hidden="true"></span>
+    <div id="stickyTool" class="tool-menu">
+      <button id="addSticky" class="tool-button" title="Add sticky note" aria-label="Add sticky note">
+        <img class="sticky-tool-icon" src="assets/glyphs-poly_note-sticky-1.svg" alt="">
+        Sticky
+      </button>
+      <div id="stickyToolMenu" class="sticky-tool-menu" aria-label="Sticky colors">
+        <button type="button" data-color="yellow" title="Yellow" aria-label="Yellow sticky note"></button>
+        <button type="button" data-color="pink" title="Pink" aria-label="Pink sticky note"></button>
+        <button type="button" data-color="green" title="Green" aria-label="Green sticky note"></button>
+        <button type="button" data-color="blue" title="Blue" aria-label="Blue sticky note"></button>
+        <button type="button" data-color="orange" title="Orange" aria-label="Orange sticky note"></button>
+        <button type="button" data-color="purple" title="Purple" aria-label="Purple sticky note"></button>
+        <button type="button" data-color="white" title="White" aria-label="White sticky note"></button>
+        <button type="button" data-color="gray" title="Gray" aria-label="Gray sticky note"></button>
+      </div>
+    </div>
+    <button id="addText" class="tool-button" title="Text tool" aria-label="Text tool">
+      <span class="text-tool-icon">T</span>
+      Text
+    </button>
+    <div id="pencilTool" class="tool-menu">
+      <button id="addPencil" class="tool-button" title="Pencil tool" aria-label="Pencil tool">
+        <img class="pencil-tool-icon" src="assets/emojione_pencil.svg" alt="">
+        Pencil
+      </button>
+      <div id="pencilMenu" class="pencil-menu" aria-label="Pencil settings">
+        <div class="pencil-colors" aria-label="Pencil colors">
+          <button type="button" data-pencil-color="#1f1f1f" style="--pencil-color: #1f1f1f" title="Black" aria-label="Black pencil"></button>
+          <button type="button" data-pencil-color="#ef4444" style="--pencil-color: #ef4444" title="Red" aria-label="Red pencil"></button>
+          <button type="button" data-pencil-color="#f97316" style="--pencil-color: #f97316" title="Orange" aria-label="Orange pencil"></button>
+          <button type="button" data-pencil-color="#22c55e" style="--pencil-color: #22c55e" title="Green" aria-label="Green pencil"></button>
+          <button type="button" data-pencil-color="#0ea5e9" style="--pencil-color: #0ea5e9" title="Blue" aria-label="Blue pencil"></button>
+          <button type="button" data-pencil-color="#8b5cf6" style="--pencil-color: #8b5cf6" title="Purple" aria-label="Purple pencil"></button>
+        </div>
+        <label class="pencil-width-control">
+          <span>Width</span>
+          <input id="pencilWidth" type="range" min="2" max="18" step="1" value="4">
+          <output id="pencilWidthValue">4</output>
+        </label>
+      </div>
+    </div>
+    <button id="addEraser" class="tool-button" title="Eraser tool" aria-label="Eraser tool">
+      <img class="eraser-tool-icon" src="assets/solar_eraser-bold.svg" alt="">
+      Eraser
+    </button>
+    <div id="shapeTool" class="tool-menu">
+      <button id="addShape" class="tool-button" title="Shapes" aria-label="Shapes">
+        <img class="shape-tool-icon" src="assets/fa7-solid_shapes.svg" alt="">
+        Shapes
+      </button>
+      <div id="shapeMenu" class="shape-menu" aria-label="Shape options">
+        <button type="button" data-shape="circle" title="Circle" aria-label="Circle">
+          <span class="shape-option-icon shape-option-circle"></span>
+        </button>
+        <button type="button" data-shape="square" title="Square" aria-label="Square">
+          <span class="shape-option-icon shape-option-square"></span>
+        </button>
+        <button type="button" data-shape="triangle" title="Triangle" aria-label="Triangle">
+          <span class="shape-option-icon shape-option-triangle"></span>
+        </button>
+        <button type="button" data-shape="star" title="Star" aria-label="Star">
+          <span class="shape-option-icon shape-option-star"></span>
+        </button>
+        <button type="button" data-shape="pentagon" title="Pentagon" aria-label="Pentagon">
+          <span class="shape-option-icon shape-option-pentagon"></span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div id="board">
+    <div id="canvas">
+      <svg id="drawLayer"></svg>
+    </div>
+  </div>
+
+  <button id="chatToggle" class="chat-toggle" type="button" title="Open chatbot" aria-label="Open chatbot">
+    AI
+  </button>
+
+  <section id="chatPanel" class="chat-panel" aria-label="Figy chatbot" aria-hidden="true">
+    <header class="chat-header">
+      <div>
+        <strong>Figy AI</strong>
+        <span>Board helper</span>
+      </div>
+      <button id="chatClose" type="button" title="Close chatbot" aria-label="Close chatbot">x</button>
+    </header>
+    <div id="chatMessages" class="chat-messages" aria-live="polite"></div>
+    <form id="chatForm" class="chat-form">
+      <textarea id="chatInput" rows="1" placeholder="Ask about your board..." aria-label="Chat message"></textarea>
+      <button type="submit">Send</button>
+    </form>
+  </section>
+
+  <div id="zoomControls" aria-label="Board zoom controls">
+    <button id="themeToggle" class="theme-switch" type="button" title="Switch to dark mode" aria-label="Switch to dark mode" aria-pressed="false">
+      <span class="theme-icon sun-icon"></span>
+      <span class="theme-icon moon-icon"></span>
+      <span class="theme-switch-thumb"></span>
+    </button>
+    <button id="zoomOut" type="button" title="Zoom out" aria-label="Zoom out">-</button>
+    <label class="zoom-input-wrap" aria-label="Zoom percentage">
+      <input id="zoomLevel" type="number" min="2" max="200" step="1" value="100">
+      <span>%</span>
+    </label>
+    <button id="zoomIn" type="button" title="Zoom in" aria-label="Zoom in">+</button>
+  </div>
+
+  <script src="src/js/aiClient.js"></script>
+  <script src="src/js/board.js"></script>
+  <script src="src/js/chat.js"></script>
+</body>
+</html>
