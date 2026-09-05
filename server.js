@@ -7,8 +7,8 @@ const { serveStaticFile } = require("./src/server/static");
 
 const rootDir = __dirname;
 const env = loadEnv(path.join(rootDir, ".env"));
-const port = Number(env.PORT) || 3000;
-const host = env.HOST || "127.0.0.1";
+const port = 4317;
+const host = "127.0.0.1";
 
 const server = http.createServer(async (req, res) => {
   try {

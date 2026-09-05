@@ -55,12 +55,6 @@ Create or update `.env`:
 
 ```text
 HUGGINGFACE_API_KEY=your_hugging_face_token_here
-HUGGINGFACE_MODEL=openai/gpt-oss-120b
-CHAT_SYSTEM_PROMPT=You are Figy Assistant, a concise helper for brainstorming on a whiteboard.
-USE_LANGCHAIN=false
-CHAT_MAX_TOKENS=700
-PORT=4317
-HOST=127.0.0.1
 ```
 
 Start the app:
@@ -100,25 +94,31 @@ Before deploying, create a fresh Hugging Face token and use that on Vercel.
 1. Push this folder to a GitHub repository.
 2. Import the repository in Vercel.
 3. In Vercel, open Project Settings, then Environment Variables.
-4. Add these variables for Production and Preview:
+4. Add this variable for Production and Preview:
 
 ```text
 HUGGINGFACE_API_KEY=your_hugging_face_token_here
-HUGGINGFACE_MODEL=openai/gpt-oss-120b
-CHAT_SYSTEM_PROMPT=You are Figy Assistant, a concise helper for brainstorming on a whiteboard.
-USE_LANGCHAIN=false
-CHAT_MAX_TOKENS=700
 ```
 
 5. Deploy the project.
 
 On Vercel, the app uses `/api/chat`. The local `server.js` is only for running Figy on your computer.
 
+The model and chat settings are normal code defaults, so you can change or add models later without editing Vercel environment variables.
+
 ## AI Notes
 
 The Hugging Face token is read by the local server from `.env`. It is not placed in browser JavaScript.
 
 On Vercel, the Hugging Face token is read from Vercel Environment Variables. Do not upload `.env`.
+
+Default AI settings live in `src/server/chat.js`:
+
+```text
+Model: openai/gpt-oss-120b
+Max tokens: 700
+LangChain: off by default
+```
 
 The server blocks private files like `.env` from being served in the browser.
 

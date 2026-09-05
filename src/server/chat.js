@@ -1,5 +1,9 @@
 const { readJsonBody, sendJson } = require("./http");
 
+const defaultModel = "openai/gpt-oss-120b";
+const defaultSystemPrompt = "You are Figy Assistant, a concise helper for brainstorming on a whiteboard.";
+const defaultMaxTokens = 700;
+
 async function handleChatRequest(req, res, env) {
   const body = await readJsonBody(req);
   const messages = Array.isArray(body.messages) ? body.messages : [];
@@ -34,7 +38,7 @@ async function runLangChainChat(messages, env) {
   const prompt = PromptTemplate.fromTemplate("{system}\n\n{conversation}\n\nAssistant:");
   const llm = new HuggingFaceInference({
     apiKey: env.HUGGINGFACE_API_KEY,
-    model: env.HUGGINGFACE_MODEL || "mistralai/Mistral-7B-Instruct-v0.3",
+    model: getModel(env),
     temperature: 0.7,
     maxTokens: getMaxTokens(env)
   });
@@ -46,7 +50,7 @@ async function runLangChainChat(messages, env) {
 }
 
 async function runHuggingFaceChat(messages, env) {
-  const model = env.HUGGINGFACE_MODEL || "mistralai/Mistral-7B-Instruct-v0.3";
+  const model = getModel(env);
   const normalizedMessages = normalizeChatMessages(messages, env);
 
   if (usesHuggingFaceRouter(model, env)) {
@@ -86,7 +90,7 @@ async function runHuggingFaceChat(messages, env) {
 }
 
 async function runHuggingFaceRouterChat(messages, env) {
-  const model = env.HUGGINGFACE_MODEL || "openai/gpt-oss-120b";
+  const model = getModel(env);
   const response = await fetch("https://router.huggingface.co/v1/chat/completions", {
     method: "POST",
     headers: {
@@ -159,7 +163,11 @@ function formatConversation(messages) {
 }
 
 function getSystemPrompt(env) {
-  return env.CHAT_SYSTEM_PROMPT || "You are Figy Assistant, a concise helper for brainstorming on a whiteboard.";
+  return env.CHAT_SYSTEM_PROMPT || defaultSystemPrompt;
+}
+
+function getModel(env) {
+  return env.HUGGINGFACE_MODEL || defaultModel;
 }
 
 function cleanReply(reply) {
@@ -169,7 +177,7 @@ function cleanReply(reply) {
 function getMaxTokens(env) {
   const maxTokens = Number(env.CHAT_MAX_TOKENS);
 
-  return Number.isFinite(maxTokens) ? Math.max(80, Math.min(1600, maxTokens)) : 700;
+  return Number.isFinite(maxTokens) ? Math.max(80, Math.min(1600, maxTokens)) : defaultMaxTokens;
 }
 
 function removeDanglingMarkdown(reply) {

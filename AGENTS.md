@@ -87,13 +87,11 @@ Required Vercel Environment Variables:
 
 ```text
 HUGGINGFACE_API_KEY
-HUGGINGFACE_MODEL
-CHAT_SYSTEM_PROMPT
-USE_LANGCHAIN
-CHAT_MAX_TOKENS
 ```
 
 Do not expose or print secrets. If a token appears in output, recommend rotating it before deployment.
+
+Model, prompt, LangChain mode, max token count, port, and host are code defaults. Do not ask the user to set those in Vercel unless they explicitly want deployment-time overrides.
 
 ## Validation Commands
 
@@ -119,12 +117,6 @@ Current expected env keys:
 
 ```text
 HUGGINGFACE_API_KEY=
-HUGGINGFACE_MODEL=openai/gpt-oss-120b
-CHAT_SYSTEM_PROMPT=You are Figy Assistant, a concise helper for brainstorming on a whiteboard.
-USE_LANGCHAIN=false
-CHAT_MAX_TOKENS=700
-PORT=4317
-HOST=127.0.0.1
 ```
 
 The browser calls AI through `window.FigyAI.requestAIReply()` from `src/js/aiClient.js`.
