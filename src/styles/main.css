@@ -53,33 +53,55 @@ body.dark {
 
 #fileHeader {
   position: fixed;
-  top: 16px;
-  left: 16px;
+  top: 14px;
+  left: 14px;
   z-index: 120;
+  display: flex;
+  align-items: center;
+  overflow: hidden;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 12px;
   box-shadow: var(--shadow-soft);
-  padding: 4px;
+  gap: 8px;
+  padding: 0 10px 0 12px;
+  min-height: 42px;
+}
+
+.figy-logo {
+  width: 18px;
+  height: 18px;
+  display: block;
+  flex: 0 0 auto;
+}
+
+.file-title-section {
+  height: 42px;
+  display: flex;
+  align-items: center;
 }
 
 #fileName {
   appearance: none;
   width: 8ch;
-  max-width: calc(100vw - 32px);
+  max-width: min(30ch, calc(100vw - 76px));
   border: 0;
-  border-radius: 5px;
+  border-radius: 7px;
   background: transparent;
   color: var(--text);
   font: inherit;
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 600;
   line-height: 1.2;
-  padding: 8px 10px;
+  padding: 7px 12px;
   outline: none;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  overflow-x: auto;
+  text-overflow: clip;
   white-space: nowrap;
+}
+
+#fileName::-webkit-scrollbar {
+  display: none;
 }
 
 #fileName:hover {
@@ -766,7 +788,17 @@ body.dark .theme-switch-thumb {
 }
 
 .chat-header strong {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   font-size: 14px;
+}
+
+.chat-logo {
+  width: 17px;
+  height: 17px;
+  display: block;
+  flex: 0 0 auto;
 }
 
 .chat-header span {

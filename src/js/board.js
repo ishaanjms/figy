@@ -70,7 +70,7 @@ const safeZoom = 0.01;
 const baseGridSize = 28;
 const defaultTextSize = 28;
 const strokePadding = 14;
-const maxVisibleFileNameLength = 28;
+const maxVisibleFileNameLength = 30;
 const modelStorageKey = "figy-ai-model";
 const textFonts = [
   { label: "Inter", value: "Inter, Arial, sans-serif" },

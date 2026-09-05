@@ -4,12 +4,17 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Figy</title>
+  <link rel="icon" type="image/svg+xml" href="assets/figy_logo.svg">
+  <link rel="shortcut icon" href="assets/figy_logo.svg">
   <link rel="stylesheet" href="src/styles/main.css">
 </head>
 
 <body>
   <div id="fileHeader">
-    <input id="fileName" type="text" value="Untitled" aria-label="File name" maxlength="80">
+    <img class="figy-logo" src="assets/figy_logo.svg" alt="" aria-hidden="true">
+    <div class="file-title-section">
+      <input id="fileName" type="text" value="Untitled" aria-label="File name" maxlength="80">
+    </div>
   </div>
 
   <div id="toolbar">
@@ -105,7 +110,7 @@
   <section id="chatPanel" class="chat-panel" aria-label="Figy chatbot" aria-hidden="true">
     <header class="chat-header">
       <div>
-        <strong>Figy AI</strong>
+        <strong><img class="chat-logo" src="assets/figy_logo.svg" alt="" aria-hidden="true">Figy AI</strong>
         <span>Board helper</span>
       </div>
       <div class="chat-header-actions">
