@@ -7,6 +7,7 @@ Figy is a lightweight FigJam-style whiteboard built with plain HTML, CSS, JavaSc
 - Create and edit sticky notes
 - Change sticky note colors
 - Use AI to write directly inside a selected sticky
+- Turn AI chat replies into sticky notes, text blocks, or headings on the canvas
 - Add text with font and size controls
 - Draw with pencil, including color and width controls
 - Select, move, copy, paste, delete, and erase objects
@@ -14,6 +15,7 @@ Figy is a lightweight FigJam-style whiteboard built with plain HTML, CSS, JavaSc
 - Pan and zoom the board
 - Switch between light and dark mode
 - Use a small AI chatbot panel
+- Switch between supported Hugging Face chat models from the board controls
 
 ## Project Structure
 
@@ -105,7 +107,7 @@ HUGGINGFACE_API_KEY=your_hugging_face_token_here
 
 On Vercel, the app uses `/api/chat`. The local `server.js` is only for running Figy on your computer.
 
-The model and chat settings are normal code defaults, so you can change or add models later without editing Vercel environment variables.
+The app includes a small AI model selector near the zoom controls. Only `HUGGINGFACE_API_KEY` needs to be stored as a Vercel environment variable.
 
 Vercel runs `npm run build`, which copies the static app into `dist/`. The project is configured to serve `dist/` as the website output.
 
@@ -118,7 +120,8 @@ On Vercel, the Hugging Face token is read from Vercel Environment Variables. Do 
 Default AI settings live in `src/server/chat.js`:
 
 ```text
-Model: openai/gpt-oss-120b
+Default model: openai/gpt-oss-120b
+Available models: openai/gpt-oss-120b, Qwen/Qwen3.8-2.4T-A95B
 Max tokens: 700
 LangChain: optional and off by default
 ```
@@ -131,6 +134,8 @@ The browser AI client tries:
 2. `http://127.0.0.1:4317/api/chat`
 
 This lets AI still work if the page is opened from a local static preview, as long as the Figy server is running.
+
+Assistant replies in the chat panel show board actions when the response has usable ideas. `Add stickies` creates a clean non-overlapping cluster in the current view, `Add text` places the reply as editable board text, and `Add heading` creates a larger title-style text item.
 
 ## Validation
 

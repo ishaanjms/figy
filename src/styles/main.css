@@ -24,7 +24,10 @@ body {
   --border: #e2e2e2;
   --text: #1f1f1f;
   --muted-text: rgba(0,0,0,.38);
-  --shadow: rgba(0,0,0,.16);
+  --shadow-soft: 0 1px 2px rgba(0,0,0,.08), 0 8px 24px rgba(0,0,0,.08);
+  --shadow-popover: 0 2px 4px rgba(0,0,0,.1), 0 10px 30px rgba(0,0,0,.1);
+  --shadow-sticky: 0 1px 2px rgba(0,0,0,.08), 0 10px 28px rgba(0,0,0,.08);
+  --shadow-thumb: 0 1px 2px rgba(0,0,0,.12), 0 3px 8px rgba(0,0,0,.08);
   --selection: #6c5ce7;
   --shape-fill: #ffffff;
   --shape-stroke: #737373;
@@ -39,7 +42,10 @@ body.dark {
   --border: #3a3a3a;
   --text: #f3f3f3;
   --muted-text: rgba(255,255,255,.42);
-  --shadow: rgba(0,0,0,.36);
+  --shadow-soft: 0 1px 2px rgba(0,0,0,.35), 0 8px 24px rgba(0,0,0,.22);
+  --shadow-popover: 0 2px 4px rgba(0,0,0,.42), 0 10px 30px rgba(0,0,0,.28);
+  --shadow-sticky: 0 1px 2px rgba(0,0,0,.28), 0 10px 28px rgba(0,0,0,.2);
+  --shadow-thumb: 0 1px 2px rgba(0,0,0,.38), 0 3px 8px rgba(0,0,0,.22);
   --selection: #8b7cff;
   --shape-fill: #252525;
   --shape-stroke: #c9c9c9;
@@ -53,7 +59,7 @@ body.dark {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 8px;
-  box-shadow: 0 8px 28px var(--shadow);
+  box-shadow: var(--shadow-soft);
   padding: 4px;
 }
 
@@ -95,7 +101,7 @@ body.dark {
   padding: 6px;
   border: 1px solid var(--border);
   border-radius: 12px;
-  box-shadow: 0 8px 28px var(--shadow);
+  box-shadow: var(--shadow-soft);
   display: flex;
   align-items: center;
   gap: 4px;
@@ -192,7 +198,7 @@ body.dark .pan-tool-icon {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 12px;
-  box-shadow: 0 12px 30px var(--shadow);
+  box-shadow: var(--shadow-popover);
 }
 
 #pencilTool.open .pencil-menu {
@@ -272,7 +278,7 @@ body.dark .pencil-colors button {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 14px;
-  box-shadow: 0 12px 30px var(--shadow);
+  box-shadow: var(--shadow-popover);
   white-space: nowrap;
 }
 
@@ -349,7 +355,7 @@ body.dark .shape-tool-icon {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 10px;
-  box-shadow: 0 8px 24px var(--shadow);
+  box-shadow: var(--shadow-popover);
 }
 
 .tool-menu:hover .shape-menu,
@@ -447,10 +453,10 @@ body.dark .shape-tool-icon {
 
 .drawing-stroke {
   fill: none;
-  stroke: var(--text);
+  stroke: var(--stroke-color, var(--text));
   stroke-linecap: round;
   stroke-linejoin: round;
-  stroke-width: 4;
+  stroke-width: var(--stroke-width, 4);
   pointer-events: stroke;
 }
 
@@ -544,7 +550,7 @@ body.dark.tool-shape #board {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 10px;
-  box-shadow: 0 8px 28px var(--shadow);
+  box-shadow: var(--shadow-soft);
 }
 
 #zoomControls button {
@@ -583,7 +589,7 @@ body.dark.tool-shape #board {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 50%;
-  box-shadow: 0 2px 8px var(--shadow);
+  box-shadow: var(--shadow-thumb);
   transition: transform .18s ease;
 }
 
@@ -621,6 +627,54 @@ body.dark .theme-switch-thumb {
 #zoomControls button:focus-visible {
   outline: 2px solid var(--selection);
   outline-offset: 2px;
+}
+
+.model-settings {
+  position: relative;
+}
+
+.model-settings-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 8px);
+  display: none;
+  width: 220px;
+  padding: 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: var(--shadow-popover);
+  z-index: 2;
+}
+
+.model-settings.open .model-settings-menu {
+  display: block;
+}
+
+.model-settings-menu label {
+  display: block;
+  margin-bottom: 7px;
+  color: var(--muted-text);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.model-settings-menu select {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--board-bg);
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  padding: 8px 9px;
+  outline: none;
+}
+
+.model-settings-menu select:focus {
+  border-color: var(--selection);
+  box-shadow: 0 0 0 2px rgba(108, 92, 231, .18);
 }
 
 .zoom-input-wrap {
@@ -666,7 +720,7 @@ body.dark .theme-switch-thumb {
   border-radius: 50%;
   background: var(--surface);
   color: var(--text);
-  box-shadow: 0 8px 28px var(--shadow);
+  box-shadow: var(--shadow-soft);
   cursor: pointer;
   font: inherit;
   font-weight: 700;
@@ -689,7 +743,7 @@ body.dark .theme-switch-thumb {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 12px;
-  box-shadow: 0 16px 44px var(--shadow);
+  box-shadow: var(--shadow-popover);
 }
 
 .chat-panel.open {
@@ -721,6 +775,12 @@ body.dark .theme-switch-thumb {
   font-size: 12px;
 }
 
+.chat-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
 .chat-header button {
   appearance: none;
   width: 32px;
@@ -733,6 +793,17 @@ body.dark .theme-switch-thumb {
   font: inherit;
   font-size: 24px;
   line-height: 1;
+}
+
+.settings-icon {
+  width: 18px;
+  height: 18px;
+  display: block;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .chat-header button:hover {
@@ -824,6 +895,39 @@ body.dark .chat-message code {
   background: rgba(255,255,255,.12);
 }
 
+.chat-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
+.chat-actions button {
+  appearance: none;
+  min-height: 28px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 5px 8px;
+}
+
+.chat-actions button:hover {
+  background: var(--surface-hover);
+}
+
+.chat-action-status {
+  color: var(--muted-text);
+  font-size: 12px;
+}
+
 .chat-form {
   display: flex;
   gap: 8px;
@@ -876,13 +980,31 @@ body.dark .chat-message code {
   height: 360px;
   background: #a9daf7;
   border-radius: 0;
-  box-shadow: 0 10px 28px rgba(0,0,0,.14);
+  box-shadow: var(--shadow-sticky);
   cursor: grab;
   color: rgba(31,31,31,.78);
   font-size: 32px;
   font-weight: 400;
   line-height: 1.35;
   user-select: none;
+}
+
+.sticky.ai-sticky {
+  font-size: 22px;
+  line-height: 1.25;
+}
+
+.sticky.ai-sticky .sticky-content {
+  padding: 18px 20px;
+}
+
+.sticky.ai-title {
+  font-weight: 600;
+}
+
+.sticky.ai-detail {
+  font-size: 18px;
+  color: rgba(31,31,31,.68);
 }
 
 .sticky.selected {
@@ -961,7 +1083,7 @@ body.dark .chat-message code {
   background: #1f1f1f;
   border: 1px solid rgba(255,255,255,.1);
   border-radius: 12px;
-  box-shadow: 0 12px 30px rgba(0,0,0,.28);
+  box-shadow: 0 2px 4px rgba(0,0,0,.18), 0 10px 28px rgba(0,0,0,.16);
   z-index: 4;
 }
 
@@ -1052,7 +1174,7 @@ body.dark .chat-message code {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 10px;
-  box-shadow: 0 14px 36px var(--shadow);
+  box-shadow: var(--shadow-popover);
   color: var(--text);
   z-index: 6;
 }
@@ -1181,7 +1303,7 @@ body.dark .sticky-ai-status {
   background: #1f1f1f;
   border: 1px solid rgba(255,255,255,.08);
   border-radius: 14px;
-  box-shadow: 0 12px 30px rgba(0,0,0,.28);
+  box-shadow: 0 2px 4px rgba(0,0,0,.18), 0 10px 28px rgba(0,0,0,.16);
   white-space: nowrap;
   z-index: 5;
 }
@@ -1316,7 +1438,7 @@ body.dark .sticky-ai-status {
   background: #1f1f1f;
   border: 1px solid rgba(255,255,255,.1);
   border-radius: 12px;
-  box-shadow: 0 12px 30px rgba(0,0,0,.28);
+  box-shadow: 0 2px 4px rgba(0,0,0,.18), 0 10px 28px rgba(0,0,0,.16);
   z-index: 4;
 }
 
@@ -1360,7 +1482,7 @@ body.dark .sticky-ai-status {
   background: #7ec8f6;
   border: 3px solid var(--surface);
   border-radius: 50%;
-  box-shadow: 0 1px 4px rgba(0,0,0,.22);
+  box-shadow: var(--shadow-thumb);
   cursor: crosshair;
   z-index: 3;
 }

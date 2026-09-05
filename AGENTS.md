@@ -143,6 +143,7 @@ The server must remain bound to `127.0.0.1` by default. Do not expose `.env`, do
 - Pan mode uses hand/grab behavior.
 - Sticky selection shows color dots, connector handles, and the AI write button.
 - Sticky AI opens a small popover near the sticky and writes directly into `.sticky-content`.
+- Assistant chat replies can be converted into board objects with `Add stickies`, `Add text`, and `Add heading`.
 - Pencil tool has color and width controls.
 - Finished pencil strokes become selectable `.stroke-item` objects.
 - Shapes are resizable and can be non-uniform unless Shift is held while drawing/resizing.

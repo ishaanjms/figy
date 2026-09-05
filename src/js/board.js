@@ -22,6 +22,10 @@ const themeToggle = document.getElementById("themeToggle");
 const zoomInButton = document.getElementById("zoomIn");
 const zoomOutButton = document.getElementById("zoomOut");
 const zoomLevel = document.getElementById("zoomLevel");
+const modelSettings = document.getElementById("modelSettings");
+const modelSettingsButton = document.getElementById("modelSettingsButton");
+const modelSettingsMenu = document.getElementById("modelSettingsMenu");
+const aiModelSelect = document.getElementById("aiModelSelect");
 const fileName = document.getElementById("fileName");
 const stickyPlaceholder = "Type something...";
 const textPlaceholder = "Text";
@@ -67,6 +71,7 @@ const baseGridSize = 28;
 const defaultTextSize = 28;
 const strokePadding = 14;
 const maxVisibleFileNameLength = 28;
+const modelStorageKey = "figy-ai-model";
 const textFonts = [
   { label: "Inter", value: "Inter, Arial, sans-serif" },
   { label: "Arial", value: "Arial, sans-serif" },
@@ -97,6 +102,11 @@ function setFileName(nextName) {
   updateFileNameWidth();
   document.title = cleanName + " - Figy";
   localStorage.setItem("figy-file-name", cleanName);
+}
+
+function setAIModel(model) {
+  aiModelSelect.value = model;
+  localStorage.setItem(modelStorageKey, model);
 }
 
 function setTheme(theme) {
@@ -235,6 +245,16 @@ function getBoardSurfacePoint(e) {
   };
 }
 
+function getVisibleBoardCenter() {
+  const boardBounds = board.getBoundingClientRect();
+  const currentZoom = zoom || safeZoom;
+
+  return {
+    x: (boardBounds.width / 2 - panX) / currentZoom,
+    y: (boardBounds.height / 2 - panY) / currentZoom
+  };
+}
+
 function updateStrokePoints(stroke) {
   stroke.setAttribute("points", activeStrokePoints.map((point) => `${point.x},${point.y}`).join(" "));
 }
@@ -278,6 +298,7 @@ function serializeBoard() {
         ...baseData,
         type: "sticky",
         id: element.dataset.elementId,
+        variant: element.dataset.variant || "",
         color: element.dataset.color,
         text: element.querySelector(".sticky-content").innerText
       };
@@ -352,6 +373,10 @@ function restoreBoard(snapshot) {
       element = createSticky(item.x, item.y, item.text, false);
       element.dataset.elementId = item.id || getNextElementId();
       element.dataset.color = item.color;
+      if (item.variant) {
+        element.dataset.variant = item.variant;
+        element.classList.add("ai-sticky", item.variant);
+      }
     }
 
     if (item.type === "text") {
@@ -1163,7 +1188,7 @@ function createStrokeItemFromData(strokeData, shouldSelect = false) {
   const stroke = document.createElementNS("http://www.w3.org/2000/svg", "polyline");
   const points = typeof strokeData.points === "string" ? JSON.parse(strokeData.points) : strokeData.points;
   const color = strokeData.color || strokeData.strokeColor || selectedPencilColor;
-  const widthValue = Number(strokeData.width || strokeData.strokeWidth) || selectedPencilWidth;
+  const widthValue = Number(strokeData.strokeWidth || strokeData.lineWidth) || selectedPencilWidth;
 
   strokeItem.className = "stroke-item";
   strokeItem.dataset.points = JSON.stringify(points);
@@ -1178,8 +1203,11 @@ function createStrokeItemFromData(strokeData, shouldSelect = false) {
   strokeSvg.setAttribute("aria-hidden", "true");
   stroke.classList.add("drawing-stroke");
   stroke.setAttribute("points", points.map((point) => `${point.x},${point.y}`).join(" "));
+  stroke.setAttribute("fill", "none");
   stroke.setAttribute("stroke", color);
   stroke.setAttribute("stroke-width", widthValue);
+  stroke.style.setProperty("--stroke-color", color);
+  stroke.style.setProperty("--stroke-width", widthValue);
   strokeSvg.appendChild(stroke);
   strokeItem.appendChild(strokeSvg);
   canvas.appendChild(strokeItem);
@@ -1213,6 +1241,128 @@ function getShapeSvg(shape) {
   };
 
   return shapes[shape] || shapes.circle;
+}
+
+function addAIStickies(items) {
+  const cleanItems = normalizeAIItems(items);
+
+  if (!cleanItems.length) return;
+
+  const center = getVisibleBoardCenter();
+  const rowGap = 24;
+  const columnGap = 16;
+  const titleWidth = 220;
+  const detailWidth = 360;
+  const singleWidth = 340;
+  const startX = center.x - (titleWidth + columnGap + detailWidth) / 2;
+  let nextY = center.y - Math.min(cleanItems.length, 4) * 84;
+
+  cleanItems.forEach((item) => {
+    const hasDetail = Boolean(item.detail);
+    const titleHeight = getAIStickyHeight(item.title, titleWidth);
+    const detailHeight = hasDetail ? getAIStickyHeight(item.detail, detailWidth) : 0;
+    const rowHeight = Math.max(titleHeight, detailHeight);
+    const titleX = hasDetail ? startX : center.x - singleWidth / 2;
+    const position = findOpenStickyPosition(
+      titleX,
+      nextY,
+      hasDetail ? titleWidth + columnGap + detailWidth : singleWidth,
+      rowHeight
+    );
+
+    createAISticky(position.x, position.y, hasDetail ? titleWidth : singleWidth, rowHeight, item.title, "ai-title");
+
+    if (hasDetail) {
+      createAISticky(position.x + titleWidth + columnGap, position.y, detailWidth, rowHeight, item.detail, "ai-detail");
+    }
+
+    nextY = position.y + rowHeight + rowGap;
+  });
+
+  setActiveTool("select");
+  saveHistory();
+}
+
+function createAISticky(x, y, width, height, text, type) {
+  const sticky = createSticky(x, y, text, false);
+
+  sticky.classList.add("ai-sticky", type);
+  sticky.dataset.variant = type;
+  sticky.style.width = width + "px";
+  sticky.style.height = height + "px";
+
+  return sticky;
+}
+
+function getAIStickyHeight(text, width) {
+  const cleanText = cleanAIText(text);
+  const charactersPerLine = Math.max(12, Math.floor(width / 15));
+  const lineCount = cleanText
+    .split(/\s+/)
+    .reduce((lines, word) => {
+      const currentLine = lines[lines.length - 1] || "";
+
+      if ((currentLine + " " + word).trim().length > charactersPerLine) {
+        lines.push(word);
+        return lines;
+      }
+
+      lines[lines.length - 1] = (currentLine + " " + word).trim();
+      return lines;
+    }, [""]).length;
+
+  return Math.max(112, Math.min(300, lineCount * 30 + 58));
+}
+
+function addAIText(text, options = {}) {
+  const cleanText = cleanAIText(text);
+
+  if (!cleanText) return;
+
+  const center = getVisibleBoardCenter();
+  const textItem = createText(center.x - 160, center.y - 40, cleanText);
+  const fontSize = options.heading ? 44 : 24;
+
+  textItem.style.fontSize = fontSize + "px";
+  textItem.style.fontWeight = options.heading ? "700" : "500";
+  textItem.querySelector(".text-size-slider").value = fontSize;
+  textItem.querySelector(".text-size-value").innerText = fontSize;
+  textItem.querySelector("[data-format='bold']").classList.toggle("active", options.heading);
+  isSkippingHistory = true;
+  stopEditing(textItem);
+  isSkippingHistory = false;
+  setActiveTool("select");
+  saveHistory();
+}
+
+function normalizeAIItems(items) {
+  return items
+    .map((item) => {
+      if (typeof item === "object") {
+        return {
+          title: cleanAIText(item.title || ""),
+          detail: cleanAIText(item.detail || "")
+        };
+      }
+
+      return {
+        title: cleanAIText(item),
+        detail: ""
+      };
+    })
+    .filter((item) => item.title || item.detail)
+    .map((item) => item.title ? item : { title: item.detail, detail: "" })
+    .slice(0, 12);
+}
+
+function cleanAIText(text) {
+  return String(text)
+    .replace(/\*\*/g, "")
+    .replace(/`/g, "")
+    .replace(/^[-*]\s+/gm, "")
+    .replace(/^\d+\.\s+/gm, "")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function isEditableTarget(target) {
@@ -1628,7 +1778,6 @@ pencilButton.addEventListener("click", () => {
 });
 
 pencilMenu.addEventListener("mousedown", (e) => {
-  e.preventDefault();
   e.stopPropagation();
 });
 
@@ -1696,6 +1845,28 @@ themeToggle.addEventListener("click", () => {
   setTheme(document.body.classList.contains("dark") ? "light" : "dark");
 });
 
+modelSettingsButton.addEventListener("click", (e) => {
+  e.stopPropagation();
+  const isOpen = !modelSettings.classList.contains("open");
+
+  modelSettings.classList.toggle("open", isOpen);
+  modelSettingsButton.setAttribute("aria-expanded", String(isOpen));
+});
+
+modelSettingsMenu.addEventListener("mousedown", (e) => {
+  e.stopPropagation();
+});
+
+modelSettingsMenu.addEventListener("click", (e) => {
+  e.stopPropagation();
+});
+
+aiModelSelect.addEventListener("change", () => {
+  setAIModel(aiModelSelect.value);
+  modelSettings.classList.remove("open");
+  modelSettingsButton.setAttribute("aria-expanded", "false");
+});
+
 zoomOutButton.addEventListener("click", () => {
   setZoom(zoom - zoomStep);
 });
@@ -1718,6 +1889,8 @@ zoomLevel.addEventListener("blur", () => {
 board.addEventListener("click", (e) => {
   stickyTool.classList.remove("open");
   pencilTool.classList.remove("open");
+  modelSettings.classList.remove("open");
+  modelSettingsButton.setAttribute("aria-expanded", "false");
 
   if (ignoreNextBoardClick) {
     ignoreNextBoardClick = false;
@@ -1782,8 +1955,11 @@ board.addEventListener("pointerdown", (e) => {
     const point = getBoardPoint(e);
     activeStroke = document.createElementNS("http://www.w3.org/2000/svg", "polyline");
     activeStroke.classList.add("drawing-stroke");
+    activeStroke.setAttribute("fill", "none");
     activeStroke.setAttribute("stroke", selectedPencilColor);
     activeStroke.setAttribute("stroke-width", selectedPencilWidth);
+    activeStroke.style.setProperty("--stroke-color", selectedPencilColor);
+    activeStroke.style.setProperty("--stroke-width", selectedPencilWidth);
     activeStrokePoints = [point];
     updateStrokePoints(activeStroke);
     drawLayer.appendChild(activeStroke);
@@ -2017,5 +2193,12 @@ setPan(panX, panY);
 setActiveTool(activeTool);
 setTheme(localStorage.getItem("figy-theme") || "light");
 setFileName(localStorage.getItem("figy-file-name") || defaultFileName);
+setAIModel(localStorage.getItem(modelStorageKey) || aiModelSelect.value);
 updateStickyToolSelection();
+updatePencilToolSelection();
 saveHistory();
+
+window.FigyBoard = {
+  addAIStickies,
+  addAIText
+};

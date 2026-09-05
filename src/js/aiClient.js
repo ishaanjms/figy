@@ -1,4 +1,6 @@
 const figyChatApiUrls = getFigyChatApiUrls();
+const defaultFigyModel = "openai/gpt-oss-120b";
+const figyModelStorageKey = "figy-ai-model";
 
 function getFigyChatApiUrls() {
   const urls = ["/api/chat"];
@@ -31,7 +33,10 @@ async function requestChatReply(chatApiUrl, messages) {
     headers: {
       "Content-Type": "application/json"
     },
-    body: JSON.stringify({ messages })
+    body: JSON.stringify({
+      messages,
+      model: getSelectedAIModel()
+    })
   });
 
   const responseText = await response.text();
@@ -54,6 +59,11 @@ async function requestChatReply(chatApiUrl, messages) {
   return data.reply;
 }
 
+function getSelectedAIModel() {
+  return localStorage.getItem(figyModelStorageKey) || defaultFigyModel;
+}
+
 window.FigyAI = {
-  requestAIReply
+  requestAIReply,
+  getSelectedAIModel
 };

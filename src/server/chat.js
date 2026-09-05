@@ -1,12 +1,17 @@
 const { readJsonBody, sendJson } = require("./http");
 
 const defaultModel = "openai/gpt-oss-120b";
+const allowedModels = new Set([
+  defaultModel,
+  "Qwen/Qwen3.8-2.4T-A95B"
+]);
 const defaultSystemPrompt = "You are Figy Assistant, a concise helper for brainstorming on a whiteboard.";
 const defaultMaxTokens = 700;
 
 async function handleChatRequest(req, res, env) {
   const body = await readJsonBody(req);
   const messages = Array.isArray(body.messages) ? body.messages : [];
+  const model = getRequestedModel(body.model, env);
   const apiKey = env.HUGGINGFACE_API_KEY;
 
   if (!apiKey) {
@@ -16,29 +21,29 @@ async function handleChatRequest(req, res, env) {
     return;
   }
 
-  const reply = await runChat(messages, env);
+  const reply = await runChat(messages, env, model);
   sendJson(res, 200, { reply });
 }
 
-async function runChat(messages, env) {
+async function runChat(messages, env, model) {
   if (env.USE_LANGCHAIN === "true") {
     try {
-      return await runLangChainChat(messages, env);
+      return await runLangChainChat(messages, env, model);
     } catch (error) {
       console.warn("LangChain unavailable, falling back to Hugging Face API:", error.message);
     }
   }
 
-  return runHuggingFaceChat(messages, env);
+  return runHuggingFaceChat(messages, env, model);
 }
 
-async function runLangChainChat(messages, env) {
+async function runLangChainChat(messages, env, model) {
   const { HuggingFaceInference } = await import("@langchain/community/llms/hf");
   const { PromptTemplate } = await import("@langchain/core/prompts");
   const prompt = PromptTemplate.fromTemplate("{system}\n\n{conversation}\n\nAssistant:");
   const llm = new HuggingFaceInference({
     apiKey: env.HUGGINGFACE_API_KEY,
-    model: getModel(env),
+    model,
     temperature: 0.7,
     maxTokens: getMaxTokens(env)
   });
@@ -49,8 +54,7 @@ async function runLangChainChat(messages, env) {
   }));
 }
 
-async function runHuggingFaceChat(messages, env) {
-  const model = getModel(env);
+async function runHuggingFaceChat(messages, env, model) {
   const normalizedMessages = normalizeChatMessages(messages, env);
 
   if (usesHuggingFaceRouter(model, env)) {
@@ -124,7 +128,7 @@ function usesHuggingFaceRouter(model, env) {
   if (env.HUGGINGFACE_API_MODE === "router") return true;
   if (env.HUGGINGFACE_API_MODE === "legacy") return false;
 
-  return model.startsWith("openai/gpt-oss");
+  return model.startsWith("openai/gpt-oss") || model.startsWith("Qwen/");
 }
 
 function normalizeChatMessages(messages, env) {
@@ -168,6 +172,14 @@ function getSystemPrompt(env) {
 
 function getModel(env) {
   return env.HUGGINGFACE_MODEL || defaultModel;
+}
+
+function getRequestedModel(requestedModel, env) {
+  const model = typeof requestedModel === "string" && requestedModel.trim()
+    ? requestedModel.trim()
+    : getModel(env);
+
+  return allowedModels.has(model) ? model : defaultModel;
 }
 
 function cleanReply(reply) {

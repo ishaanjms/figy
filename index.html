@@ -108,7 +108,24 @@
         <strong>Figy AI</strong>
         <span>Board helper</span>
       </div>
-      <button id="chatClose" type="button" title="Close chatbot" aria-label="Close chatbot">x</button>
+      <div class="chat-header-actions">
+        <div id="modelSettings" class="model-settings">
+          <button id="modelSettingsButton" type="button" title="AI model settings" aria-label="AI model settings" aria-expanded="false">
+            <svg class="settings-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M12 15.5A3.5 3.5 0 1 0 12 8a3.5 3.5 0 0 0 0 7.5Z"></path>
+              <path d="M19.4 15a1.8 1.8 0 0 0 .36 1.98l.06.06a2.1 2.1 0 0 1-2.96 2.96l-.06-.06a1.8 1.8 0 0 0-1.98-.36 1.8 1.8 0 0 0-1.08 1.64v.18a2.1 2.1 0 0 1-4.2 0v-.1a1.8 1.8 0 0 0-1.18-1.68 1.8 1.8 0 0 0-1.98.36l-.06.06a2.1 2.1 0 0 1-2.96-2.96l.06-.06A1.8 1.8 0 0 0 4.6 15a1.8 1.8 0 0 0-1.64-1.08h-.18a2.1 2.1 0 0 1 0-4.2h.1A1.8 1.8 0 0 0 4.56 8.54a1.8 1.8 0 0 0-.36-1.98l-.06-.06A2.1 2.1 0 0 1 7.1 3.54l.06.06a1.8 1.8 0 0 0 1.98.36h.08A1.8 1.8 0 0 0 10.28 2.3v-.1a2.1 2.1 0 0 1 4.2 0v.1a1.8 1.8 0 0 0 1.08 1.64 1.8 1.8 0 0 0 1.98-.36l.06-.06a2.1 2.1 0 0 1 2.96 2.96l-.06.06a1.8 1.8 0 0 0-.36 1.98v.08a1.8 1.8 0 0 0 1.64 1.08h.18a2.1 2.1 0 0 1 0 4.2h-.18A1.8 1.8 0 0 0 19.4 15Z"></path>
+            </svg>
+          </button>
+          <div id="modelSettingsMenu" class="model-settings-menu" aria-label="AI model settings">
+            <label for="aiModelSelect">Model</label>
+            <select id="aiModelSelect">
+              <option value="openai/gpt-oss-120b">GPT OSS 120B</option>
+              <option value="Qwen/Qwen3.8-2.4T-A95B">Qwen 3.8 2.4T A95B</option>
+            </select>
+          </div>
+        </div>
+        <button id="chatClose" type="button" title="Close chatbot" aria-label="Close chatbot">x</button>
+      </div>
     </header>
     <div id="chatMessages" class="chat-messages" aria-live="polite"></div>
     <form id="chatForm" class="chat-form">
