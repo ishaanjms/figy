@@ -73,11 +73,18 @@ Default app URL:
 http://127.0.0.1:4317
 ```
 
+Build static output for Vercel:
+
+```bash
+npm run build
+```
+
 ## Vercel Hosting
 
 This project is now Vercel-ready.
 
-- Static files are served from the repo root.
+- Vercel builds static output into `dist/` using `scripts/build-vercel.js`.
+- `vercel.json` sets `outputDirectory` to `dist`.
 - Hosted AI calls use `api/chat.js`.
 - `api/chat.js` reuses `src/server/chat.js`.
 - Vercel env vars are read from `process.env`.

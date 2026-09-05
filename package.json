@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "start": "node server.js",
+    "build": "node scripts/build-vercel.js",
     "autostart:install": "bash scripts/install-autostart.sh",
     "autostart:uninstall": "bash scripts/uninstall-autostart.sh"
   }

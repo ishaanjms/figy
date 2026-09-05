@@ -37,10 +37,11 @@ src/
 index.html           Main app page
 api/chat.js          Vercel API route for hosted AI chat
 server.js            Local Node server entry point
+scripts/build-vercel.js  Copies static files into dist for Vercel
 package.json         App scripts and dependencies
 .env                 Local private config, not committed
 .env.example         Example AI config
-vercel.json          Vercel function settings
+vercel.json          Vercel build and function settings
 ```
 
 ## Setup
@@ -106,6 +107,8 @@ On Vercel, the app uses `/api/chat`. The local `server.js` is only for running F
 
 The model and chat settings are normal code defaults, so you can change or add models later without editing Vercel environment variables.
 
+Vercel runs `npm run build`, which copies the static app into `dist/`. The project is configured to serve `dist/` as the website output.
+
 ## AI Notes
 
 The Hugging Face token is read by the local server from `.env`. It is not placed in browser JavaScript.
@@ -140,4 +143,5 @@ node --check src/js/aiClient.js
 node --check server.js
 node --check src/server/chat.js
 node --check api/chat.js
+npm run build
 ```
