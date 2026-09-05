@@ -43,7 +43,7 @@ src/server/
 
 ## Run Commands
 
-Install dependencies:
+Install dependencies only if package dependencies are added later:
 
 ```bash
 npm install
@@ -92,6 +92,7 @@ HUGGINGFACE_API_KEY
 Do not expose or print secrets. If a token appears in output, recommend rotating it before deployment.
 
 Model, prompt, LangChain mode, max token count, port, and host are code defaults. Do not ask the user to set those in Vercel unless they explicitly want deployment-time overrides.
+Do not add LangChain packages by default. The optional dynamic import path can stay, but Vercel deploys should not install LangChain unless the user explicitly wants that mode.
 
 ## Validation Commands
 

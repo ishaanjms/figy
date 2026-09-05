@@ -29,7 +29,7 @@ src/
   styles/
     main.css         App styling
   server/
-    chat.js          Hugging Face and LangChain chat logic
+    chat.js          Hugging Face chat logic, with an optional LangChain path
     env.js           .env loader
     http.js          JSON request/response helpers
     static.js        Static file serving
@@ -45,7 +45,7 @@ vercel.json          Vercel function settings
 
 ## Setup
 
-Install dependencies:
+Install dependencies, if package dependencies are added later:
 
 ```bash
 npm install
@@ -117,7 +117,7 @@ Default AI settings live in `src/server/chat.js`:
 ```text
 Model: openai/gpt-oss-120b
 Max tokens: 700
-LangChain: off by default
+LangChain: optional and off by default
 ```
 
 The server blocks private files like `.env` from being served in the browser.
