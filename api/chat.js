@@ -1,10 +1,15 @@
-const { handleChatRequest } = require("../src/server/chat");
+const { getChatHealth, handleChatRequest } = require("../src/server/chat");
 const { sendJson } = require("../src/server/http");
 
 module.exports = async function handler(req, res) {
   try {
     if (req.method === "OPTIONS") {
       sendJson(res, 204, {});
+      return;
+    }
+
+    if (req.method === "GET") {
+      sendJson(res, 200, getChatHealth(process.env));
       return;
     }
 

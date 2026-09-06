@@ -1794,7 +1794,7 @@ function normalizeFlowchartPlan(plan) {
         column: Number.isFinite(Number(node.column)) ? Number(node.column) : null
       };
     })
-    .filter((node) => node.id && node.label && !isFlowchartMetaLabel(node.label) && !/^[a-z]$/i.test(node.label))
+    .filter((node) => node.id && node.label && !isFlowchartMetaLabel(node.label) && !isFlowchartCodeFragmentLabel(node.label) && !/^[a-z]$/i.test(node.label))
     .slice(0, maxFlowchartNodes);
   const nodeIds = new Set(nodes.map((node) => node.id));
   let connections = Array.isArray(rawPlan.connections) ? rawPlan.connections : [];
@@ -1855,6 +1855,13 @@ function cleanFlowchartLabel(label) {
 
 function isFlowchartMetaLabel(label) {
   return /flow\s*chart|flowchart|ascii|diagram/i.test(label);
+}
+
+function isFlowchartCodeFragmentLabel(label) {
+  return /^[{}\[\],:]$/.test(label) ||
+    /^(json|title|nodes|connections|steps|edges)\s*[{:]?$/i.test(label) ||
+    /^["']?(id|type|label|row|column|from|to|source|target)["']?\s*:/.test(label) ||
+    /^{?\s*["']?(id|type|label|row|column|from|to|source|target)["']?\s*:/.test(label);
 }
 
 function getFlowchartPlacements(nodes, connections) {

@@ -135,6 +135,17 @@ function markActionUsed(actions, label) {
 }
 
 function getAssistantDisplayContent(content, index = -1) {
+  const jsonPlan = parseFlowchartPlan(content);
+  if (isUsableFlowchartPlan(jsonPlan)) return formatFlowchartDisplay(normalizeChatFlowchartPlan(jsonPlan));
+
+  if (isJsonLikeFlowchartText(content)) {
+    return [
+      "**Flowchart plan**",
+      "",
+      "I received a structured plan, but it needs to be cleaned before it can be rendered on the board."
+    ].join("\n");
+  }
+
   const mermaidPlan = parseMermaidFlowchart(content);
   if (mermaidPlan.nodes.length) return formatFlowchartDisplay(mermaidPlan);
 
@@ -215,7 +226,7 @@ async function generateFlowchartPlan(userPrompt, assistantReply) {
         "2. Branch planner: identify real choices, alternatives, exceptions, and optional paths.",
         "3. Board executor: convert the plan into nodes and directed connections for a FigJam-style canvas.",
         "",
-        "Return only valid JSON. No markdown, no Mermaid, no ASCII art, no prose.",
+        "Return only valid minified JSON. No markdown fences, no Mermaid, no ASCII art, no prose.",
         "Schema:",
         "{\"title\":\"Short title\",\"nodes\":[{\"id\":\"stable-id\",\"type\":\"start|step|decision|end\",\"label\":\"User-facing label\",\"detail\":\"Optional detail\",\"row\":0,\"column\":0}],\"connections\":[{\"from\":\"stable-id\",\"to\":\"stable-id\",\"label\":\"Optional choice label\"}]}",
         "",
@@ -239,10 +250,14 @@ async function generateFlowchartPlan(userPrompt, assistantReply) {
         assistantReply
       ].join("\n")
     }
-  ], { maxTokens: 1800 });
+  ], { maxTokens: 2400 });
   const parsedPlan = parseFlowchartPlan(reply);
 
-  if (isStrongFlowchartPlan(parsedPlan)) return parsedPlan;
+  if (isUsableFlowchartPlan(parsedPlan)) return normalizeChatFlowchartPlan(parsedPlan, userPrompt);
+
+  if (isJsonLikeFlowchartText(reply)) {
+    throw new Error("The AI returned an incomplete flowchart plan. Try again, or paste Mermaid code directly.");
+  }
 
   const replyAsciiFlowPlan = parseAsciiBoxFlowchart(reply, userPrompt);
 
@@ -281,10 +296,89 @@ function parseFlowchartPlan(reply) {
   if (!jsonText) return {};
 
   try {
-    return JSON.parse(jsonText);
+    return unwrapFlowchartPlan(JSON.parse(jsonText));
   } catch {
     return {};
   }
+}
+
+function unwrapFlowchartPlan(plan) {
+  if (!plan || typeof plan !== "object") return {};
+  if (Array.isArray(plan.nodes) || Array.isArray(plan.steps)) return plan;
+  if (plan.flowchart && typeof plan.flowchart === "object") return unwrapFlowchartPlan(plan.flowchart);
+  if (plan.plan && typeof plan.plan === "object") return unwrapFlowchartPlan(plan.plan);
+  if (plan.data && typeof plan.data === "object") return unwrapFlowchartPlan(plan.data);
+
+  return plan;
+}
+
+function isUsableFlowchartPlan(plan) {
+  const nodes = Array.isArray(plan?.nodes) ? plan.nodes : Array.isArray(plan?.steps) ? plan.steps : [];
+
+  return nodes.length >= 2 && nodes.every((node) => {
+    const label = cleanIdeaLine(node?.label || node?.title || node?.name || "");
+
+    return label && !isJsonFragmentLabel(label) && !/^[a-z]$/i.test(label);
+  });
+}
+
+function normalizeChatFlowchartPlan(plan, userPrompt = "") {
+  const rawNodes = Array.isArray(plan.nodes) ? plan.nodes : Array.isArray(plan.steps) ? plan.steps : [];
+  const nodes = rawNodes.map((node, index) => {
+    const label = cleanJsonFlowchartLabel(node.label || node.title || node.name || (index === 0 ? "Start" : "Step " + index));
+
+    return {
+      id: cleanFlowchartIdForChat(node.id || label || "step-" + index),
+      type: cleanIdeaLine(node.type || node.kind || (index === 0 ? "start" : index === rawNodes.length - 1 ? "end" : "step")).toLowerCase(),
+      label,
+      detail: cleanIdeaLine(node.detail || node.description || node.note || ""),
+      row: Number.isFinite(Number(node.row)) ? Number(node.row) : null,
+      column: Number.isFinite(Number(node.column)) ? Number(node.column) : null
+    };
+  }).filter((node) => node.id && node.label && !isJsonFragmentLabel(node.label));
+  const nodeIds = new Set(nodes.map((node) => node.id));
+  const rawConnections = Array.isArray(plan.connections) ? plan.connections : Array.isArray(plan.edges) ? plan.edges : [];
+  let connections = rawConnections.map((connection) => ({
+    from: cleanFlowchartIdForChat(connection.from || connection.source || connection.start || ""),
+    to: cleanFlowchartIdForChat(connection.to || connection.target || connection.end || ""),
+    label: cleanIdeaLine(connection.label || connection.choice || connection.condition || "")
+  })).filter((connection) => nodeIds.has(connection.from) && nodeIds.has(connection.to) && connection.from !== connection.to);
+
+  if (!connections.length) {
+    connections = nodes.slice(0, -1).map((node, index) => ({
+      from: node.id,
+      to: nodes[index + 1].id,
+      label: ""
+    }));
+  }
+
+  return {
+    title: cleanIdeaLine(plan.title || plan.name || userPrompt).slice(0, 80) || "AI Flowchart",
+    nodes,
+    connections
+  };
+}
+
+function cleanJsonFlowchartLabel(label) {
+  return cleanIdeaLine(label)
+    .replace(/^\[([A-Za-z][^\]]{1,80})\]$/, "$1")
+    .replace(/^\(([^)]{2,80})\)$/, "$1")
+    .trim();
+}
+
+function isJsonLikeFlowchartText(text) {
+  const normalized = normalizeAssistantText(text);
+
+  return /```json/i.test(normalized) ||
+    /^\s*\{/.test(normalized) ||
+    /"nodes"\s*:|"steps"\s*:|"connections"\s*:|"edges"\s*:/i.test(normalized);
+}
+
+function isJsonFragmentLabel(label) {
+  return /^[{}\[\],:]$/.test(label) ||
+    /^(json|title|nodes|connections|steps|edges)\s*[{:]?$/i.test(label) ||
+    /^["']?(id|type|label|row|column|from|to|source|target)["']?\s*:/.test(label) ||
+    /^{?\s*["']?(id|type|label|row|column|from|to|source|target)["']?\s*:/.test(label);
 }
 
 function isStrongFlowchartPlan(plan) {
@@ -310,6 +404,8 @@ function isStrongFlowchartPlan(plan) {
 }
 
 function parseAsciiBoxFlowchart(text, userPrompt = "") {
+  if (isJsonLikeFlowchartText(text)) return { title: "", nodes: [], connections: [] };
+
   const lines = normalizeAssistantText(text)
     .replace(/```/g, "")
     .split(/\r?\n/)
@@ -412,6 +508,8 @@ function uniqueFlowchartNodes(nodes) {
 }
 
 function parseBracketFlowchart(text, userPrompt = "") {
+  if (isJsonLikeFlowchartText(text)) return { title: "", nodes: [], connections: [] };
+
   const lines = normalizeAssistantText(text)
     .replace(/```/g, "")
     .split(/\r?\n/)
@@ -444,6 +542,8 @@ function parseBracketFlowchart(text, userPrompt = "") {
 }
 
 function parseMermaidFlowchart(text, userPrompt = "") {
+  if (isJsonLikeFlowchartText(text) && !hasMermaidDirectionLine(text)) return { title: "", nodes: [], connections: [] };
+
   const rawLines = normalizeAssistantText(text)
     .replace(/```mermaid/gi, "")
     .replace(/```/g, "")
@@ -486,6 +586,10 @@ function parseMermaidFlowchart(text, userPrompt = "") {
       .filter((connection) => labeledIds.has(connection.from) && labeledIds.has(connection.to))
       .slice(0, 140)
   };
+}
+
+function hasMermaidDirectionLine(text) {
+  return /(^|\n)\s*(flowchart|graph)\s+(td|tb|bt|lr|rl)\b/i.test(normalizeAssistantText(text));
 }
 
 function parseMermaidEdgeChain(line) {

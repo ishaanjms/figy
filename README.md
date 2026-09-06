@@ -107,6 +107,14 @@ GEMINI_API_KEY=your_gemini_key_here
 
 In Vercel, put only `GEMINI_API_KEY` in the key/name field and only the token value in the value field. After saving the variable, redeploy the project because existing deployments do not automatically pick up new environment variables.
 
+After deployment, open this URL to confirm the function can see the key without exposing it:
+
+```text
+https://your-vercel-domain.vercel.app/api/chat
+```
+
+You should see `"hasGeminiKey": true`. If it is `false`, the variable was added to the wrong Vercel project/environment or the deployment was not rebuilt after adding it.
+
 5. Deploy the project.
 
 On Vercel, the app uses `/api/chat`. The local `server.js` is only for running Figy on your computer.

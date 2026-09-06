@@ -1,6 +1,6 @@
 const http = require("http");
 const path = require("path");
-const { handleChatRequest } = require("./src/server/chat");
+const { getChatHealth, handleChatRequest } = require("./src/server/chat");
 const { loadEnv } = require("./src/server/env");
 const { sendJson } = require("./src/server/http");
 const { serveStaticFile } = require("./src/server/static");
@@ -19,6 +19,11 @@ const server = http.createServer(async (req, res) => {
 
     if (req.method === "POST" && req.url === "/api/chat") {
       await handleChatRequest(req, res, env);
+      return;
+    }
+
+    if (req.method === "GET" && req.url === "/api/chat") {
+      sendJson(res, 200, getChatHealth(env));
       return;
     }
 

@@ -30,6 +30,19 @@ async function handleChatRequest(req, res, env) {
   sendJson(res, 200, { reply });
 }
 
+function getChatHealth(env) {
+  const hasGeminiKey = Boolean(getGeminiApiKey(env));
+  const hasHuggingFaceKey = Boolean(env.HUGGINGFACE_API_KEY);
+
+  return {
+    ok: true,
+    hasGeminiKey,
+    hasHuggingFaceKey,
+    defaultProvider: getProvider(getDefaultModel(env), env),
+    defaultModel: getDefaultModel(env)
+  };
+}
+
 async function runChat(messages, env, model, provider, maxTokens) {
   if (provider === "gemini") {
     return runGeminiChat(messages, env, getGeminiModel(env, model), maxTokens);
@@ -221,13 +234,30 @@ function formatConversation(messages) {
 }
 
 function normalizeGeminiMessages(messages) {
-  const normalized = messages
+  const rawMessages = messages
     .filter((message) => message && typeof message.content === "string")
     .map((message) => ({
       role: message.role === "assistant" ? "model" : "user",
       parts: [{ text: message.content.trim() }]
     }))
     .filter((message) => message.parts[0].text);
+
+  while (rawMessages[0]?.role === "model") {
+    rawMessages.shift();
+  }
+
+  const normalized = [];
+
+  rawMessages.forEach((message) => {
+    const previousMessage = normalized[normalized.length - 1];
+
+    if (previousMessage?.role === message.role) {
+      previousMessage.parts[0].text += "\n\n" + message.parts[0].text;
+      return;
+    }
+
+    normalized.push(message);
+  });
 
   return normalized.length ? normalized : [{ role: "user", parts: [{ text: "Hello" }] }];
 }
@@ -307,5 +337,6 @@ function removeDanglingMarkdown(reply) {
 }
 
 module.exports = {
-  handleChatRequest
+  handleChatRequest,
+  getChatHealth
 };
