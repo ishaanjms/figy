@@ -60,6 +60,8 @@ Create or update `.env`:
 GEMINI_API_KEY=your_gemini_key_here
 ```
 
+`GOOGLE_API_KEY` and `GOOGLE_GENERATIVE_AI_API_KEY` also work if you already use one of those names.
+
 Start the app:
 
 ```bash
@@ -103,6 +105,8 @@ Before deploying, create a fresh Gemini key and use that on Vercel.
 GEMINI_API_KEY=your_gemini_key_here
 ```
 
+In Vercel, put only `GEMINI_API_KEY` in the key/name field and only the token value in the value field. After saving the variable, redeploy the project because existing deployments do not automatically pick up new environment variables.
+
 5. Deploy the project.
 
 On Vercel, the app uses `/api/chat`. The local `server.js` is only for running Figy on your computer.
@@ -126,7 +130,7 @@ Max tokens: 1200
 LangChain: optional and off by default
 ```
 
-If `GEMINI_API_KEY` is present and `HUGGINGFACE_API_KEY` is missing, Figy automatically uses Gemini. Hugging Face remains available as a fallback provider when configured.
+If `GEMINI_API_KEY`, `GOOGLE_API_KEY`, or `GOOGLE_GENERATIVE_AI_API_KEY` is present and `HUGGINGFACE_API_KEY` is missing, Figy automatically uses Gemini. Hugging Face remains available as a fallback provider when configured.
 
 The server blocks private files like `.env` from being served in the browser.
 

@@ -21,7 +21,7 @@ async function handleChatRequest(req, res, env) {
 
   if (!apiKey) {
     sendJson(res, 200, {
-      reply: "Add your Gemini API key to .env as GEMINI_API_KEY, or add a Hugging Face key as HUGGINGFACE_API_KEY, then restart the Figy server."
+      reply: "Add your Gemini API key as GEMINI_API_KEY, then restart locally or redeploy on Vercel. You can also use GOOGLE_API_KEY or GOOGLE_GENERATIVE_AI_API_KEY."
     });
     return;
   }
@@ -46,7 +46,7 @@ async function runChat(messages, env, model, provider, maxTokens) {
   try {
     return await runHuggingFaceChat(messages, env, model, maxTokens);
   } catch (error) {
-    if (env.GEMINI_API_KEY) {
+    if (getGeminiApiKey(env)) {
       console.warn("Hugging Face unavailable, falling back to Gemini:", error.message);
       return runGeminiChat(messages, env, getGeminiModel(env), maxTokens);
     }
@@ -56,10 +56,11 @@ async function runChat(messages, env, model, provider, maxTokens) {
 }
 
 async function runGeminiChat(messages, env, model, maxTokens) {
+  const apiKey = getGeminiApiKey(env);
   const response = await fetch("https://generativelanguage.googleapis.com/v1beta/models/" + model + ":generateContent", {
     method: "POST",
     headers: {
-      "x-goog-api-key": env.GEMINI_API_KEY,
+      "x-goog-api-key": apiKey,
       "Content-Type": "application/json"
     },
     body: JSON.stringify({
@@ -257,7 +258,7 @@ function getRequestedModel(requestedModel, env) {
 }
 
 function getDefaultModel(env) {
-  return env.GEMINI_API_KEY && !env.HUGGINGFACE_API_KEY ? getGeminiModel(env) : getHuggingFaceModel(env);
+  return getGeminiApiKey(env) && !env.HUGGINGFACE_API_KEY ? getGeminiModel(env) : getHuggingFaceModel(env);
 }
 
 function getProvider(model, env) {
@@ -265,13 +266,17 @@ function getProvider(model, env) {
 
   if (requestedProvider === "gemini" || requestedProvider === "huggingface") return requestedProvider;
   if (isGeminiModel(model)) return "gemini";
-  if (env.GEMINI_API_KEY && !env.HUGGINGFACE_API_KEY) return "gemini";
+  if (getGeminiApiKey(env) && !env.HUGGINGFACE_API_KEY) return "gemini";
 
   return "huggingface";
 }
 
 function getProviderApiKey(provider, env) {
-  return provider === "gemini" ? env.GEMINI_API_KEY : env.HUGGINGFACE_API_KEY;
+  return provider === "gemini" ? getGeminiApiKey(env) : env.HUGGINGFACE_API_KEY;
+}
+
+function getGeminiApiKey(env) {
+  return env.GEMINI_API_KEY || env.GOOGLE_API_KEY || env.GOOGLE_GENERATIVE_AI_API_KEY || "";
 }
 
 function isGeminiModel(model) {

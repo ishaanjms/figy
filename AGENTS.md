@@ -128,6 +128,8 @@ GEMINI_API_KEY=
 HUGGINGFACE_API_KEY=
 ```
 
+`GOOGLE_API_KEY` and `GOOGLE_GENERATIVE_AI_API_KEY` are also accepted as Gemini key aliases.
+
 The browser calls AI through `window.FigyAI.requestAIReply()` from `src/js/aiClient.js`.
 
 In production, `src/js/aiClient.js` only calls `/api/chat`. On local static previews, it can also fall back to `http://127.0.0.1:4317/api/chat`.

@@ -674,24 +674,11 @@ body.dark .theme-switch-thumb {
 .theme-icon {
   position: relative;
   z-index: 1;
-  width: 14px;
-  height: 14px;
+  width: 15px;
+  height: 15px;
   display: block;
-}
-
-.sun-icon {
-  background: #ffbf3f;
-  border-radius: 50%;
-  box-shadow:
-    0 -7px 0 -5px #ffbf3f,
-    0 7px 0 -5px #ffbf3f,
-    7px 0 0 -5px #ffbf3f,
-    -7px 0 0 -5px #ffbf3f;
-}
-
-.moon-icon {
-  border-radius: 50%;
-  box-shadow: inset 5px 0 0 #9aa4b2;
+  object-fit: contain;
+  pointer-events: none;
 }
 
 #zoomControls button:hover {
