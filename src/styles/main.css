@@ -402,35 +402,14 @@ body.dark .shape-tool-icon {
 }
 
 .shape-option-icon {
-  width: 20px;
-  height: 20px;
-  background: var(--shape-fill);
-  border: 2px solid var(--shape-stroke);
+  width: 24px;
+  height: 24px;
   display: block;
-}
-
-.shape-option-circle {
-  border-radius: 50%;
-}
-
-.shape-option-triangle {
-  width: 0;
-  height: 0;
-  background: transparent;
-  border-left: 11px solid transparent;
-  border-right: 11px solid transparent;
-  border-bottom: 20px solid var(--shape-stroke);
-}
-
-.shape-option-star {
-  background: var(--shape-stroke);
-  border: 0;
-  clip-path: polygon(50% 0, 61% 35%, 98% 35%, 68% 56%, 79% 91%, 50% 70%, 21% 91%, 32% 56%, 2% 35%, 39% 35%);
-}
-
-.shape-option-pentagon {
-  background: var(--shape-fill);
-  clip-path: polygon(50% 0, 100% 38%, 82% 100%, 18% 100%, 0 38%);
+  fill: none;
+  stroke: var(--shape-stroke);
+  stroke-width: 2.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 #board {
