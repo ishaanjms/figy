@@ -1497,6 +1497,33 @@ body.dark .sticky-ai-status {
   overflow: visible;
 }
 
+.shape-label {
+  position: absolute;
+  inset: 14px 18px;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text);
+  font-size: 18px;
+  font-weight: 650;
+  line-height: 1.18;
+  text-align: center;
+  overflow: hidden;
+  pointer-events: none;
+  word-break: break-word;
+}
+
+.shape-item[data-shape="diamond"] .shape-label {
+  inset: 20px 34px;
+  font-size: 15px;
+}
+
+.shape-item.editing .shape-label {
+  pointer-events: auto;
+  outline: none;
+}
+
 .resize-handle {
   position: absolute;
   width: 10px;

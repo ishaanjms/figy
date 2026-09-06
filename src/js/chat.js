@@ -27,7 +27,7 @@ function renderChatMessages() {
     messageElement.className = "chat-message " + message.role;
 
     if (message.role === "assistant") {
-      messageElement.innerHTML = renderMarkdown(message.content);
+      messageElement.innerHTML = renderMarkdown(getAssistantDisplayContent(message.content, index));
       appendAssistantActions(messageElement, message, index);
     } else {
       messageElement.textContent = message.content;
@@ -44,11 +44,26 @@ function appendAssistantActions(messageElement, message, index) {
 
   const ideas = extractIdeasFromAIResponse(message.content);
   const cleanText = getPlainAIText(message.content);
+  const sourcePrompt = getPreviousUserMessage(index);
+  const canCreateFlowchart = isFlowchartRequest(sourcePrompt + "\n" + message.content);
 
-  if (!ideas.length && !cleanText) return;
+  if (!ideas.length && !cleanText && !canCreateFlowchart) return;
 
   const actions = document.createElement("div");
   actions.className = "chat-actions";
+
+  if (canCreateFlowchart) {
+    actions.appendChild(createChatAction("Add flowchart", async () => {
+      markActionUsed(actions, "Building flowchart...");
+      const plan = await generateFlowchartPlan(sourcePrompt, message.content);
+
+      window.FigyBoard.addAIFlowchart(plan);
+      markActionUsed(actions, "Added flowchart");
+    }));
+    actions.dataset.messageIndex = index;
+    messageElement.appendChild(actions);
+    return;
+  }
 
   if (ideas.length) {
     actions.appendChild(createChatAction("Add stickies", () => {
@@ -91,12 +106,25 @@ function createChatAction(label, onClick) {
 
   button.type = "button";
   button.innerText = label;
-  button.addEventListener("click", onClick);
+  button.addEventListener("click", async () => {
+    button.disabled = true;
+
+    try {
+      await onClick();
+    } catch (error) {
+      const actions = button.closest(".chat-actions");
+      markActionUsed(actions, error?.message || "Could not add this");
+    } finally {
+      button.disabled = false;
+    }
+  });
 
   return button;
 }
 
 function markActionUsed(actions, label) {
+  if (!actions) return;
+
   actions.querySelector(".chat-action-status")?.remove();
 
   const status = document.createElement("span");
@@ -104,6 +132,507 @@ function markActionUsed(actions, label) {
   status.className = "chat-action-status";
   status.innerText = label;
   actions.appendChild(status);
+}
+
+function getAssistantDisplayContent(content, index = -1) {
+  const mermaidPlan = parseMermaidFlowchart(content);
+  if (mermaidPlan.nodes.length) return formatFlowchartDisplay(mermaidPlan);
+
+  const asciiPlan = parseAsciiBoxFlowchart(content);
+  if (asciiPlan.nodes.length) return formatFlowchartDisplay(asciiPlan);
+
+  const bracketPlan = parseBracketFlowchart(content);
+  const displayPlan = bracketPlan.nodes.length ? bracketPlan : { nodes: [] };
+
+  if (!displayPlan.nodes.length) {
+    const sourcePrompt = getPreviousUserMessage(index);
+
+    if (isFlowchartRequest(sourcePrompt + "\n" + content)) {
+      return [
+        "**Flowchart plan**",
+        "",
+        "I can turn this into an editable flowchart with steps, branches, and connectors on the board."
+      ].join("\n");
+    }
+
+    return content;
+  }
+
+  return formatFlowchartDisplay(displayPlan);
+}
+
+function formatFlowchartDisplay(displayPlan) {
+  const title = displayPlan.title || "Flowchart plan";
+  const steps = displayPlan.nodes.slice(0, 8).map((node, index) => {
+    const detail = node.detail ? " - " + node.detail : "";
+
+    return `${index + 1}. ${node.label}${detail}`;
+  });
+  const moreText = displayPlan.nodes.length > steps.length ? `\n\nPlus ${displayPlan.nodes.length - steps.length} more step${displayPlan.nodes.length - steps.length === 1 ? "" : "s"} in the generated board.` : "";
+
+  return [
+    `**${title}**`,
+    "",
+    "I found a structured flow with branches where needed:",
+    "",
+    ...steps,
+    moreText
+  ].join("\n");
+}
+
+function getPreviousUserMessage(index) {
+  for (let i = index - 1; i >= 0; i -= 1) {
+    if (chatHistory[i]?.role === "user") return chatHistory[i].content;
+  }
+
+  return "";
+}
+
+function isFlowchartRequest(content) {
+  return isMermaidFlowchartCode(content) || /\b(flow\s*chart|flowchart|workflow|process|pipeline|journey|decision tree|steps|sequence|diagram|map out|system flow)\b/i.test(content);
+}
+
+function isMermaidFlowchartCode(content) {
+  const text = normalizeAssistantText(content);
+
+  return /(^|\n)\s*(flowchart|graph)\s+(td|tb|bt|lr|rl)\b/i.test(text) ||
+    /(^|\n)\s*[A-Za-z][\w-]*\s*(?:\[\[?[^\]]+\]?\]|\{[^}]+\}|\(\([^)]+\)\)|\([^)]+\))?\s*(?:-->|---|==>|-.->|--\s*[^-\n]+?\s*-->|==\s*[^=\n]+?\s*==>)/i.test(text);
+}
+
+async function generateFlowchartPlan(userPrompt, assistantReply) {
+  const userMermaidPlan = parseMermaidFlowchart(userPrompt, userPrompt);
+
+  if (userMermaidPlan.nodes.length) return userMermaidPlan;
+
+  const reply = await window.FigyAI.requestAIReply([
+    {
+      role: "user",
+      content: [
+        "You are Figy's internal agentic flowchart builder. Produce a high-quality editable whiteboard plan.",
+        "",
+        "Think as three agents, but output only the final JSON:",
+        "1. Process analyst: infer the missing practical steps from the user's goal. Do not require the user to provide every detail.",
+        "2. Branch planner: identify real choices, alternatives, exceptions, and optional paths.",
+        "3. Board executor: convert the plan into nodes and directed connections for a FigJam-style canvas.",
+        "",
+        "Return only valid JSON. No markdown, no Mermaid, no ASCII art, no prose.",
+        "Schema:",
+        "{\"title\":\"Short title\",\"nodes\":[{\"id\":\"stable-id\",\"type\":\"start|step|decision|end\",\"label\":\"User-facing label\",\"detail\":\"Optional detail\",\"row\":0,\"column\":0}],\"connections\":[{\"from\":\"stable-id\",\"to\":\"stable-id\",\"label\":\"Optional choice label\"}]}",
+        "",
+        "Quality rules:",
+        "- Build the complete useful process, not a tiny summary.",
+        "- Use 6 to 14 nodes for ordinary processes.",
+        "- Use decision nodes for meaningful branches such as options, yes/no checks, failures, or alternatives.",
+        "- A decision node must have at least two outgoing connections with different labels.",
+        "- Branches may rejoin later when the process converges.",
+        "- Include row and column numbers. Top-to-bottom flow increases row. Put alternative branches in different columns.",
+        "- Keep node labels human readable. Never use internal ids, arrows, brackets, numbering, Mermaid syntax, or words like ASCII.",
+        "- Keep labels under 46 characters. Keep details under 120 characters.",
+        "- Put choice names on connection.label, not inside the decision label.",
+        "- Do not create separate nodes for simple ingredient lists unless they are actual process steps.",
+        "- Prefer a useful real-world flow over a strictly linear list.",
+        "",
+        "User request:",
+        userPrompt || "Create a useful process flowchart.",
+        "",
+        "Context from the previous assistant reply, if useful. Ignore its formatting and diagrams:",
+        assistantReply
+      ].join("\n")
+    }
+  ], { maxTokens: 1800 });
+  const parsedPlan = parseFlowchartPlan(reply);
+
+  if (isStrongFlowchartPlan(parsedPlan)) return parsedPlan;
+
+  const replyAsciiFlowPlan = parseAsciiBoxFlowchart(reply, userPrompt);
+
+  if (replyAsciiFlowPlan.nodes.length) return replyAsciiFlowPlan;
+
+  const replyBracketFlowPlan = parseBracketFlowchart(reply, userPrompt);
+
+  if (replyBracketFlowPlan.nodes.length) return replyBracketFlowPlan;
+
+  const replyMermaidPlan = parseMermaidFlowchart(reply, userPrompt);
+
+  if (replyMermaidPlan.nodes.length) return replyMermaidPlan;
+
+  const mermaidPlan = parseMermaidFlowchart(assistantReply, userPrompt);
+
+  if (mermaidPlan.nodes.length) return mermaidPlan;
+
+  const asciiFlowPlan = parseAsciiBoxFlowchart(assistantReply, userPrompt);
+
+  if (asciiFlowPlan.nodes.length) return asciiFlowPlan;
+
+  const bracketFlowPlan = parseBracketFlowchart(assistantReply, userPrompt);
+
+  if (bracketFlowPlan.nodes.length) return bracketFlowPlan;
+
+  const fallbackPlan = createFlowchartPlanFromIdeas(userPrompt, assistantReply);
+
+  if (fallbackPlan.nodes.length) return fallbackPlan;
+
+  throw new Error("Could not find enough steps for a flowchart.");
+}
+
+function parseFlowchartPlan(reply) {
+  const jsonText = extractJsonObject(reply);
+
+  if (!jsonText) return {};
+
+  try {
+    return JSON.parse(jsonText);
+  } catch {
+    return {};
+  }
+}
+
+function isStrongFlowchartPlan(plan) {
+  if (!plan || !Array.isArray(plan.nodes) || !Array.isArray(plan.connections)) return false;
+  if (plan.nodes.length < 4) return false;
+
+  const nodeTypes = new Map(plan.nodes.map((node) => [node.id, String(node.type || "").toLowerCase()]));
+  const outgoingCounts = plan.connections.reduce((counts, connection) => {
+    counts.set(connection.from, (counts.get(connection.from) || 0) + 1);
+    return counts;
+  }, new Map());
+
+  return plan.nodes.every((node) => {
+    const label = cleanIdeaLine(node.label || node.title || node.name || "");
+
+    if (!label || /^[a-z]$/i.test(label) || /-->|ascii|mermaid|^\[?\d+\]?/.test(label.toLowerCase())) return false;
+    if (nodeTypes.get(node.id)?.includes("decision")) {
+      return (outgoingCounts.get(node.id) || 0) >= 2;
+    }
+
+    return true;
+  });
+}
+
+function parseAsciiBoxFlowchart(text, userPrompt = "") {
+  const lines = normalizeAssistantText(text)
+    .replace(/```/g, "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const nodes = [];
+
+  lines.forEach((line, index) => {
+    if (isAsciiBranchText(line)) return;
+
+    const cellParts = line
+      .split("|")
+      .map((part) => cleanAsciiFlowText(part))
+      .filter(Boolean);
+    const label = cellParts.find((part) => (
+      isUsefulIdea(part) &&
+      !isAsciiDiagramText(part) &&
+      !isAsciiTitleText(part) &&
+      !/^[-_]+$/.test(part)
+    ));
+
+    if (!label) return;
+
+    const rawNextLine = lines[index + 1] || "";
+    const nextLine = cleanAsciiFlowText(rawNextLine);
+    const detail = nextLine && !isAsciiDiagramText(nextLine) && !isAsciiBranchText(rawNextLine) && !/^\|/.test(rawNextLine) ? nextLine : "";
+
+    nodes.push({
+      id: "step-" + (nodes.length + 1),
+      type: getAsciiFlowNodeType(label, nodes.length),
+      label,
+      detail
+    });
+  });
+
+  const uniqueNodes = uniqueFlowchartNodes(nodes).slice(0, 12);
+
+  if (uniqueNodes.length < 2) return { title: "", nodes: [], connections: [] };
+
+  uniqueNodes[0].type = "start";
+  uniqueNodes[uniqueNodes.length - 1].type = "end";
+
+  return {
+    title: getFlowchartTitle(text, userPrompt),
+    nodes: uniqueNodes,
+    connections: uniqueNodes.slice(0, -1).map((node, index) => ({
+      from: node.id,
+      to: uniqueNodes[index + 1].id
+    }))
+  };
+}
+
+function isAsciiDiagramText(text) {
+  return (
+    /^[|+\-_\s┌┐└┘─│┬┴┤├]+$/.test(text) ||
+    /^[|+\-_\s]+$/.test(text) ||
+    /^\|?\s*[-_]{3,}\s*\|?$/.test(text) ||
+    /^[▼▲→←↓↑]+$/.test(text) ||
+    /^\|?\s*[▼▲→←↓↑]\s*\|?$/.test(text) ||
+    /^[-–—]$/.test(text)
+  );
+}
+
+function isAsciiTitleText(text) {
+  return /flow\s*chart|flowchart|ascii|diagram/i.test(text);
+}
+
+function isAsciiBranchText(text) {
+  return /[├└┬┴─▶→]/.test(text);
+}
+
+function cleanAsciiFlowText(text) {
+  return cleanIdeaLine(text)
+    .replace(/[┌┐└┘│─┬┴┤├]+/g, " ")
+    .replace(/[▼▲]/g, " ")
+    .replace(/[→←↓↑▶]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function getAsciiFlowNodeType(label, index) {
+  if (/^start$/i.test(label)) return "start";
+  if (/^end$|done|finish|enjoy/i.test(label)) return "end";
+  if (/\?$|decision|yes|no|choose|if\b/i.test(label)) return "decision";
+
+  return index === 0 ? "start" : "step";
+}
+
+function uniqueFlowchartNodes(nodes) {
+  const seen = new Set();
+
+  return nodes.filter((node) => {
+    const key = node.label.toLowerCase();
+
+    if (seen.has(key)) return false;
+
+    seen.add(key);
+    return true;
+  });
+}
+
+function parseBracketFlowchart(text, userPrompt = "") {
+  const lines = normalizeAssistantText(text)
+    .replace(/```/g, "")
+    .split(/\r?\n/)
+    .map((line) => cleanIdeaLine(line))
+    .filter(Boolean);
+  const stepLines = lines.filter((line) => /^\[[^\]]{2,80}\]/.test(line));
+
+  if (stepLines.length < 2) return { title: "", nodes: [], connections: [] };
+
+  const nodes = stepLines.map((line, index) => {
+    const label = line.match(/^\[([^\]]+)\]/)?.[1] || line;
+    const detail = line.replace(/^\[[^\]]+\]\s*/, "").replace(/^[-–—]\s*/, "");
+
+    return {
+      id: "step-" + (index + 1),
+      type: index === 0 ? "start" : index === stepLines.length - 1 ? "end" : "step",
+      label,
+      detail
+    };
+  });
+
+  return {
+    title: getFlowchartTitle(text, userPrompt),
+    nodes,
+    connections: nodes.slice(0, -1).map((node, index) => ({
+      from: node.id,
+      to: nodes[index + 1].id
+    }))
+  };
+}
+
+function parseMermaidFlowchart(text, userPrompt = "") {
+  const rawLines = normalizeAssistantText(text)
+    .replace(/```mermaid/gi, "")
+    .replace(/```/g, "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const nodes = new Map();
+  const connections = [];
+  const directionLine = rawLines.find((line) => /^(flowchart|graph)\s+(td|tb|bt|lr|rl)\b/i.test(line));
+
+  rawLines.forEach((line) => {
+    if (/^(flowchart|graph)\s+/i.test(line)) return;
+    const standaloneNode = readMermaidNode(line, 0);
+
+    if (standaloneNode && standaloneNode.end >= line.replace(/;$/, "").trim().length) {
+      upsertMermaidNode(nodes, standaloneNode.node);
+      return;
+    }
+
+    parseMermaidEdgeChain(line).forEach((edge) => {
+      upsertMermaidNode(nodes, edge.fromNode);
+      upsertMermaidNode(nodes, edge.toNode);
+      connections.push({
+        from: edge.fromNode.id,
+        to: edge.toNode.id,
+        label: edge.label
+      });
+    });
+  });
+
+  if (!connections.length) return { title: "", nodes: [], connections: [] };
+
+  const labeledNodes = [...nodes.values()].filter((node) => node.label && !/^[a-z]$/i.test(node.label));
+  const labeledIds = new Set(labeledNodes.map((node) => node.id));
+
+  return {
+    title: directionLine ? getFlowchartTitle(text, userPrompt) : "",
+    nodes: labeledNodes.slice(0, 80),
+    connections: connections
+      .filter((connection) => labeledIds.has(connection.from) && labeledIds.has(connection.to))
+      .slice(0, 140)
+  };
+}
+
+function parseMermaidEdgeChain(line) {
+  const edges = [];
+  let cursor = 0;
+  let currentNode = readMermaidNode(line, cursor);
+
+  if (!currentNode) return edges;
+
+  cursor = currentNode.end;
+
+  while (cursor < line.length) {
+    const arrowMatch = line.slice(cursor).match(/^\s*(?:(?:-->|---|==>|-.->)\s*(?:\|([^|]*)\|\s*)?|--\s*([^-]+?)\s*-->|==\s*([^=]+?)\s*==>|-\.\s*([^.]+?)\s*\.->)/);
+
+    if (!arrowMatch) break;
+
+    cursor += arrowMatch[0].length;
+
+    const nextNode = readMermaidNode(line, cursor);
+
+    if (!nextNode) break;
+
+    edges.push({
+      fromNode: currentNode.node,
+      toNode: nextNode.node,
+      label: cleanIdeaLine(arrowMatch[1] || arrowMatch[2] || arrowMatch[3] || arrowMatch[4] || "")
+    });
+    currentNode = nextNode;
+    cursor = nextNode.end;
+  }
+
+  return edges;
+}
+
+function readMermaidNode(line, startIndex = 0) {
+  const source = line.slice(startIndex).trimStart();
+  const skipped = line.slice(startIndex).length - source.length;
+  const match = source.match(/^([A-Za-z][\w-]*)\s*(?:\[\[([^\]]+)\]\]|\[([^\]]+)\]|\{([^}]+)\}|\(\(([^)]+)\)\)|\(([^)]+)\))?/);
+
+  if (!match) return null;
+
+  return {
+    node: createMermaidNodeFromMatch(match),
+    end: startIndex + skipped + match[0].length
+  };
+}
+
+function parseMermaidNodeToken(token) {
+  const cleanToken = String(token)
+    .trim()
+    .replace(/;$/, "")
+    .replace(/^\s*&lt;.*?&gt;\s*/, "")
+    .replace(/\s*&lt;.*?&gt;\s*$/, "");
+  const nodeMatch = cleanToken.match(/^([A-Za-z][\w-]*)\s*(?:\[\[([^\]]+)\]\]|\[([^\]]+)\]|\{([^}]+)\}|\(\(([^)]+)\)\)|\(([^)]+)\))?/);
+
+  if (!nodeMatch) return { id: "", label: "", type: "step" };
+
+  return createMermaidNodeFromMatch(nodeMatch);
+}
+
+function createMermaidNodeFromMatch(nodeMatch) {
+  const id = cleanFlowchartIdForChat(nodeMatch[1]);
+  const hasExplicitLabel = Boolean(nodeMatch[2] || nodeMatch[3] || nodeMatch[4] || nodeMatch[5] || nodeMatch[6]);
+  const rawLabel = nodeMatch[2] || nodeMatch[3] || nodeMatch[4] || nodeMatch[5] || nodeMatch[6] || "";
+  const label = cleanMermaidLabel(rawLabel);
+  const type = nodeMatch[4] ? "decision" : /start/i.test(label) ? "start" : /end|finish|done/i.test(label) ? "end" : "step";
+
+  return {
+    id,
+    label: hasExplicitLabel ? label : "",
+    detail: "",
+    type
+  };
+}
+
+function cleanMermaidLabel(label) {
+  return cleanIdeaLine(label)
+    .replace(/^["']|["']$/g, "")
+    .replace(/^["“]|["”]$/g, "")
+    .trim();
+}
+
+function upsertMermaidNode(nodes, node) {
+  const existingNode = nodes.get(node.id);
+
+  if (!existingNode || !existingNode.label || existingNode.label === existingNode.id) {
+    nodes.set(node.id, node);
+  }
+}
+
+function cleanFlowchartIdForChat(id) {
+  return String(id)
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+function getFlowchartTitle(text, userPrompt = "") {
+  const mermaidCommentTitle = String(text).match(/^\s*%%\s*(?:title:\s*)?(.{3,90})$/mi)?.[1];
+
+  if (mermaidCommentTitle) return cleanIdeaLine(mermaidCommentTitle);
+
+  const heading = String(text).match(/^#{1,3}\s+(.{3,90})$/m)?.[1];
+
+  if (heading) return cleanIdeaLine(heading);
+
+  const boldTitle = String(text).match(/\*\*([^*]{3,90})\*\*/)?.[1];
+
+  if (boldTitle && /flow|process|workflow|chart/i.test(boldTitle)) return cleanIdeaLine(boldTitle);
+
+  if (isMermaidFlowchartCode(userPrompt || text)) return "Mermaid Flowchart";
+
+  return cleanIdeaLine(userPrompt).slice(0, 80) || "AI Flowchart";
+}
+
+function extractJsonObject(text) {
+  const cleanText = String(text)
+    .replace(/^```(?:json)?/i, "")
+    .replace(/```$/i, "")
+    .trim();
+  const firstBrace = cleanText.indexOf("{");
+  const lastBrace = cleanText.lastIndexOf("}");
+
+  if (firstBrace === -1 || lastBrace === -1 || lastBrace <= firstBrace) return "";
+
+  return cleanText.slice(firstBrace, lastBrace + 1);
+}
+
+function createFlowchartPlanFromIdeas(userPrompt, assistantReply) {
+  const ideas = extractIdeasFromAIResponse(assistantReply).slice(0, 8);
+  const title = getAIHeading(assistantReply) || cleanIdeaLine(userPrompt).slice(0, 80) || "AI Flowchart";
+  const nodes = ideas.map((idea, index) => ({
+    id: "step-" + (index + 1),
+    type: index === 0 ? "start" : index === ideas.length - 1 ? "end" : "step",
+    label: idea.title,
+    detail: idea.detail || ""
+  }));
+
+  return {
+    title,
+    nodes,
+    connections: nodes.slice(0, -1).map((node, index) => ({
+      from: node.id,
+      to: nodes[index + 1].id
+    }))
+  };
 }
 
 function renderMarkdown(markdown) {
@@ -363,6 +892,14 @@ async function handleChatSubmit(e) {
   chatInput.value = "";
   chatInput.style.height = "";
   chatHistory.push({ role: "user", content: message });
+
+  if (isMermaidFlowchartCode(message)) {
+    chatHistory.push({ role: "assistant", content: message });
+    renderChatMessages();
+    chatInput.focus();
+    return;
+  }
+
   chatHistory.push({ role: "assistant", content: "Thinking..." });
   renderChatMessages();
   setChatPending(true);

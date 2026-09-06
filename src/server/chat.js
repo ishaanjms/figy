@@ -6,12 +6,13 @@ const allowedModels = new Set([
   "Qwen/Qwen3.8-2.4T-A95B"
 ]);
 const defaultSystemPrompt = "You are Figy Assistant, a concise helper for brainstorming on a whiteboard.";
-const defaultMaxTokens = 700;
+const defaultMaxTokens = 1200;
 
 async function handleChatRequest(req, res, env) {
   const body = await readJsonBody(req);
   const messages = Array.isArray(body.messages) ? body.messages : [];
   const model = getRequestedModel(body.model, env);
+  const maxTokens = getMaxTokens(env, body.maxTokens);
   const apiKey = env.HUGGINGFACE_API_KEY;
 
   if (!apiKey) {
@@ -21,23 +22,23 @@ async function handleChatRequest(req, res, env) {
     return;
   }
 
-  const reply = await runChat(messages, env, model);
+  const reply = await runChat(messages, env, model, maxTokens);
   sendJson(res, 200, { reply });
 }
 
-async function runChat(messages, env, model) {
+async function runChat(messages, env, model, maxTokens) {
   if (env.USE_LANGCHAIN === "true") {
     try {
-      return await runLangChainChat(messages, env, model);
+      return await runLangChainChat(messages, env, model, maxTokens);
     } catch (error) {
       console.warn("LangChain unavailable, falling back to Hugging Face API:", error.message);
     }
   }
 
-  return runHuggingFaceChat(messages, env, model);
+  return runHuggingFaceChat(messages, env, model, maxTokens);
 }
 
-async function runLangChainChat(messages, env, model) {
+async function runLangChainChat(messages, env, model, maxTokens) {
   const { HuggingFaceInference } = await import("@langchain/community/llms/hf");
   const { PromptTemplate } = await import("@langchain/core/prompts");
   const prompt = PromptTemplate.fromTemplate("{system}\n\n{conversation}\n\nAssistant:");
@@ -45,7 +46,7 @@ async function runLangChainChat(messages, env, model) {
     apiKey: env.HUGGINGFACE_API_KEY,
     model,
     temperature: 0.7,
-    maxTokens: getMaxTokens(env)
+    maxTokens
   });
 
   return llm.invoke(await prompt.format({
@@ -54,11 +55,11 @@ async function runLangChainChat(messages, env, model) {
   }));
 }
 
-async function runHuggingFaceChat(messages, env, model) {
+async function runHuggingFaceChat(messages, env, model, maxTokens) {
   const normalizedMessages = normalizeChatMessages(messages, env);
 
   if (usesHuggingFaceRouter(model, env)) {
-    return runHuggingFaceRouterChat(normalizedMessages, env);
+    return runHuggingFaceRouterChat(normalizedMessages, env, maxTokens);
   }
 
   const response = await fetch("https://api-inference.huggingface.co/models/" + model, {
@@ -70,7 +71,7 @@ async function runHuggingFaceChat(messages, env, model) {
     body: JSON.stringify({
       inputs: formatPrompt(messages, env),
       parameters: {
-        max_new_tokens: getMaxTokens(env),
+        max_new_tokens: maxTokens,
         temperature: 0.7,
         return_full_text: false
       },
@@ -93,7 +94,7 @@ async function runHuggingFaceChat(messages, env, model) {
   return "I did not get a readable reply from Hugging Face.";
 }
 
-async function runHuggingFaceRouterChat(messages, env) {
+async function runHuggingFaceRouterChat(messages, env, maxTokens) {
   const model = getModel(env);
   const response = await fetch("https://router.huggingface.co/v1/chat/completions", {
     method: "POST",
@@ -104,7 +105,7 @@ async function runHuggingFaceRouterChat(messages, env) {
     body: JSON.stringify({
       model,
       messages,
-      max_tokens: getMaxTokens(env),
+      max_tokens: maxTokens,
       temperature: 0.7,
       stream: false
     })
@@ -186,10 +187,10 @@ function cleanReply(reply) {
   return removeDanglingMarkdown(String(reply).replace(/^Assistant:\s*/i, "").trim());
 }
 
-function getMaxTokens(env) {
-  const maxTokens = Number(env.CHAT_MAX_TOKENS);
+function getMaxTokens(env, requestedMaxTokens) {
+  const maxTokens = Number(requestedMaxTokens || env.CHAT_MAX_TOKENS);
 
-  return Number.isFinite(maxTokens) ? Math.max(80, Math.min(1600, maxTokens)) : defaultMaxTokens;
+  return Number.isFinite(maxTokens) ? Math.max(80, Math.min(2400, maxTokens)) : defaultMaxTokens;
 }
 
 function removeDanglingMarkdown(reply) {

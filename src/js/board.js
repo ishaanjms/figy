@@ -77,6 +77,8 @@ const modelStorageKey = "figy-ai-model";
 const defaultConnectorColor = "#707070";
 const defaultConnectorWidth = 3;
 const connectorSnapDistance = 72;
+const maxFlowchartNodes = 80;
+const maxFlowchartConnections = 140;
 const connectorColors = ["#707070", "#1f1f1f", "#ef4444", "#f97316", "#22c55e", "#0ea5e9", "#8b5cf6"];
 const textSizes = [
   { label: "Small", value: 18 },
@@ -400,7 +402,8 @@ function serializeBoard() {
         type: "shape",
         id: element.dataset.elementId,
         shape: element.dataset.shape,
-        color: element.dataset.color || "white"
+        color: element.dataset.color || "white",
+        label: element.querySelector(".shape-label")?.innerText || ""
       };
   });
 
@@ -467,6 +470,7 @@ function restoreBoard(snapshot) {
       element = createShape(item.x, item.y, item.shape, item.width, item.height);
       element.dataset.elementId = item.id || getNextElementId();
       setShapeColor(element, item.color || "white", false);
+      setShapeLabel(element, item.label || "");
     }
 
     if (item.type === "stroke") {
@@ -694,7 +698,7 @@ function getStickyAiErrorMessage(error) {
 }
 
 function getEditableArea(element) {
-  return element.querySelector(".sticky-content") || element.querySelector(".text-content") || element;
+  return element.querySelector(".sticky-content") || element.querySelector(".text-content") || element.querySelector(".shape-label") || element;
 }
 
 function rectanglesOverlap(rectA, rectB, gap = 16) {
@@ -1272,6 +1276,14 @@ function setShapeColor(shapeItem, colorName, shouldSave = true) {
   if (shouldSave) saveHistory();
 }
 
+function setShapeLabel(shapeItem, label) {
+  const shapeLabel = shapeItem.querySelector(".shape-label");
+
+  if (!shapeLabel) return;
+
+  shapeLabel.innerText = cleanFlowchartLabel(label || "");
+}
+
 function getClosestTextSizeName(fontSize) {
   const size = Number(fontSize) || defaultTextSize;
   const closestSize = textSizes.reduce((closest, current) => {
@@ -1426,6 +1438,7 @@ function createShape(x = 260, y = 200, shape = selectedShape, width = 120, heigh
   shapeItem.style.height = height + "px";
   shapeItem.innerHTML = `
     ${getShapeSvg(shape)}
+    <div class="shape-label" contenteditable="false"></div>
     <span class="connector-handle connector-handle-n" data-connector-side="n"></span>
     <span class="connector-handle connector-handle-e" data-connector-side="e"></span>
     <span class="connector-handle connector-handle-s" data-connector-side="s"></span>
@@ -1452,6 +1465,16 @@ function createShape(x = 260, y = 200, shape = selectedShape, width = 120, heigh
     }
 
     selectElement(shapeItem);
+  });
+
+  shapeItem.addEventListener("dblclick", (e) => {
+    e.stopPropagation();
+    startEditing(shapeItem);
+  });
+
+  shapeItem.querySelector(".shape-label").addEventListener("blur", () => {
+    stopEditing(shapeItem);
+    saveHistory();
   });
 
   addResizeBehavior(shapeItem);
@@ -1558,6 +1581,7 @@ function getShapeSvg(shape) {
   const shapes = {
     circle: '<svg viewBox="0 0 120 120" preserveAspectRatio="none" aria-hidden="true"><circle cx="60" cy="60" r="48"></circle></svg>',
     square: '<svg viewBox="0 0 120 120" preserveAspectRatio="none" aria-hidden="true"><rect x="4" y="4" width="112" height="112" rx="3" ry="3"></rect></svg>',
+    diamond: '<svg viewBox="0 0 120 120" preserveAspectRatio="none" aria-hidden="true"><polygon points="60,6 114,60 60,114 6,60"></polygon></svg>',
     triangle: '<svg viewBox="0 0 120 120" preserveAspectRatio="none" aria-hidden="true"><polygon points="60,16 108,104 12,104"></polygon></svg>',
     star: '<svg viewBox="0 0 120 120" preserveAspectRatio="none" aria-hidden="true"><polygon points="60,10 72,44 108,44 79,65 91,100 60,79 29,100 41,65 12,44 48,44"></polygon></svg>',
     pentagon: '<svg viewBox="0 0 120 120" preserveAspectRatio="none" aria-hidden="true"><polygon points="60,12 106,46 88,102 32,102 14,46"></polygon></svg>'
@@ -1656,6 +1680,527 @@ function addAIText(text, options = {}) {
   saveHistory();
 }
 
+function addAIFlowchart(plan) {
+  const flowchart = normalizeFlowchartPlan(plan);
+
+  if (!flowchart.nodes.length) return;
+
+  const center = getVisibleBoardCenter();
+  const isLargeFlowchart = flowchart.nodes.length > 22;
+  const nodeWidth = isLargeFlowchart ? 230 : 260;
+  const nodeHeight = isLargeFlowchart ? 92 : 108;
+  const detailWidth = 260;
+  const detailGap = 18;
+  const horizontalGap = isLargeFlowchart ? 130 : 100;
+  const verticalGap = isLargeFlowchart ? 96 : 118;
+  const placements = getFlowchartPlacements(flowchart.nodes, flowchart.connections);
+  const rows = [...new Set(placements.map((placement) => placement.row))];
+  const columns = [...new Set(placements.map((placement) => placement.column))];
+  const minColumn = Math.min(...columns);
+  const maxColumn = Math.max(...columns);
+  const layoutWidth = (maxColumn - minColumn + 1) * nodeWidth + (maxColumn - minColumn) * horizontalGap;
+  const startX = center.x - layoutWidth / 2;
+  const startY = center.y - rows.length * (nodeHeight + verticalGap) / 2;
+  const createdElements = [];
+  const nodeElements = new Map();
+
+  isSkippingHistory = true;
+
+  if (flowchart.title) {
+    const heading = createText(center.x - 260, startY - 96, flowchart.title);
+
+    setTextSize(heading, 28, false);
+    heading.style.fontWeight = "700";
+    heading.style.maxWidth = "720px";
+    heading.querySelector("[data-format='bold']").classList.add("active");
+    stopEditing(heading);
+    createdElements.push(heading);
+  }
+
+  placements.forEach((placement) => {
+      const node = placement.node;
+      const x = startX + (placement.column - minColumn) * (nodeWidth + horizontalGap);
+      const y = startY + placement.row * (nodeHeight + verticalGap);
+      const shapeType = getFlowchartShapeType(node);
+      const shape = createShape(x, y, shapeType, nodeWidth, nodeHeight);
+      const label = node.detail && node.detail.length <= 110 ? node.label + "\n" + node.detail : node.label;
+
+      setShapeColor(shape, getFlowchartShapeColor(node), false);
+      setShapeLabel(shape, label);
+      shape.dataset.flowRow = placement.row;
+      shape.dataset.flowColumn = placement.column;
+      nodeElements.set(node.id, shape);
+      createdElements.push(shape);
+
+      if (node.detail && node.detail.length > 110) {
+        const detailHeight = getAIStickyHeight(node.detail, detailWidth);
+        const detailSticky = createAISticky(
+          x + nodeWidth + detailGap,
+          y + Math.max(0, (nodeHeight - detailHeight) / 2),
+          detailWidth,
+          detailHeight,
+          node.detail,
+          "ai-detail"
+        );
+
+        detailSticky.dataset.color = "yellow";
+        createdElements.push(detailSticky);
+      }
+  });
+
+  const outgoingConnections = flowchart.connections.reduce((groups, connection) => {
+    groups.set(connection.from, [...(groups.get(connection.from) || []), connection]);
+    return groups;
+  }, new Map());
+
+  flowchart.connections.forEach((connection) => {
+    const fromElement = nodeElements.get(connection.from);
+    const toElement = nodeElements.get(connection.to);
+
+    if (!fromElement || !toElement || fromElement === toElement) return;
+
+    const siblings = outgoingConnections.get(connection.from) || [];
+    const sides = getFlowchartConnectionSides(fromElement, toElement, connection, siblings);
+    createConnectorLine(
+      fromElement.dataset.elementId,
+      sides.from,
+      toElement.dataset.elementId,
+      sides.to,
+      { color: defaultConnectorColor, width: defaultConnectorWidth }
+    );
+    createFlowchartConnectionLabel(connection, fromElement, toElement, createdElements);
+  });
+
+  isSkippingHistory = false;
+  selectElements(createdElements);
+  setActiveTool("select");
+  saveHistory();
+}
+
+function normalizeFlowchartPlan(plan) {
+  const rawPlan = typeof plan === "object" && plan ? plan : {};
+  const rawNodes = Array.isArray(rawPlan.nodes) ? rawPlan.nodes : [];
+  const nodes = rawNodes
+    .map((node, index) => {
+      const label = cleanFlowchartLabel(node.label || node.title || node.name || "");
+      const id = cleanFlowchartId(node.id || label || "node-" + index);
+
+      return {
+        id,
+        label,
+        detail: cleanFlowchartLabel(node.detail || node.description || node.note || ""),
+        type: cleanAIText(node.type || node.kind || "step").toLowerCase(),
+        row: Number.isFinite(Number(node.row)) ? Number(node.row) : null,
+        column: Number.isFinite(Number(node.column)) ? Number(node.column) : null
+      };
+    })
+    .filter((node) => node.id && node.label && !isFlowchartMetaLabel(node.label) && !/^[a-z]$/i.test(node.label))
+    .slice(0, maxFlowchartNodes);
+  const nodeIds = new Set(nodes.map((node) => node.id));
+  let connections = Array.isArray(rawPlan.connections) ? rawPlan.connections : [];
+
+  connections = connections
+    .map((connection) => ({
+      from: cleanFlowchartId(connection.from || connection.source || connection.start || ""),
+      to: cleanFlowchartId(connection.to || connection.target || connection.end || ""),
+      label: cleanFlowchartLabel(connection.label || connection.choice || connection.condition || "")
+    }))
+    .filter((connection) => nodeIds.has(connection.from) && nodeIds.has(connection.to) && connection.from !== connection.to)
+    .slice(0, maxFlowchartConnections);
+
+  if (!connections.length && nodes.length > 1) {
+    connections = nodes.slice(0, -1).map((node, index) => ({
+      from: node.id,
+      to: nodes[index + 1].id
+    }));
+  }
+
+  return {
+    title: cleanAIText(rawPlan.title || rawPlan.name || ""),
+    nodes,
+    connections
+  };
+}
+
+function cleanFlowchartId(id) {
+  return String(id)
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+function cleanFlowchartLabel(label) {
+  const text = String(label || "")
+    .replace(/\*\*/g, "")
+    .replace(/`/g, "")
+    .replace(/^\[\d+\]\s*/, "")
+    .replace(/^\s*\d+\s*[\].)-]\s*/, "")
+    .replace(/^\d+\s*[.)-]\s*/, "")
+    .replace(/^[-*]\s+/gm, "")
+    .replace(/^\d+\.\s+/gm, "")
+    .replace(/[ \t]+/g, " ")
+    .trim();
+  const bracketLabel = text.match(/\[([^\]]{2,120})\]/)?.[1];
+
+  if (bracketLabel) return cleanAIText(bracketLabel);
+
+  return text
+    .replace(/[┌┐└┘│─┬┴┤├▼▲→←↓↑▶]+/g, " ")
+    .replace(/\b[A-Za-z][\w-]*\s*(-->|---|==>|-.->)\s*/g, "")
+    .replace(/\s*(-->|---|==>|-.->)\s*\b[A-Za-z][\w-]*/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function isFlowchartMetaLabel(label) {
+  return /flow\s*chart|flowchart|ascii|diagram/i.test(label);
+}
+
+function getFlowchartPlacements(nodes, connections) {
+  if (nodes.every((node) => Number.isFinite(node.row) && Number.isFinite(node.column))) {
+    return nodes.map((node, index) => ({
+      node,
+      row: Number.isFinite(node.row) ? Math.max(0, node.row) : index,
+      column: Number.isFinite(node.column) ? node.column : 0
+    }));
+  }
+
+  const layoutConnections = getForwardFlowchartConnections(nodes, connections);
+  const rows = getFlowchartRows(nodes, layoutConnections);
+  const columnById = getFlowchartColumns(nodes, layoutConnections, rows);
+  const placements = [];
+
+  rows.forEach((row, rowIndex) => {
+    const orderedRow = row
+      .map((node, index) => ({
+        node,
+        index,
+        column: columnById.get(node.id) ?? index - (row.length - 1) / 2
+      }))
+      .sort((a, b) => a.column - b.column || a.index - b.index);
+
+    const balancedColumns = balanceFlowchartRowColumns(orderedRow.map((item) => item.column));
+
+    orderedRow.forEach((item, index) => {
+      placements.push({
+        node: item.node,
+        row: rowIndex,
+        column: balancedColumns[index]
+      });
+    });
+  });
+
+  return placements.sort((a, b) => a.row - b.row || a.column - b.column);
+}
+
+function getForwardFlowchartConnections(nodes, connections) {
+  const indexedConnections = connections.map((connection, index) => ({ ...connection, index }));
+  const childrenById = nodes.reduce((children, node) => children.set(node.id, []), new Map());
+  const incomingCount = new Map(nodes.map((node) => [node.id, 0]));
+  const stateById = new Map();
+  const forwardIndexes = new Set();
+
+  indexedConnections.forEach((connection) => {
+    childrenById.get(connection.from)?.push(connection);
+    incomingCount.set(connection.to, (incomingCount.get(connection.to) || 0) + 1);
+  });
+
+  const roots = nodes
+    .filter((node) => /start|begin/i.test(node.type) || !incomingCount.get(node.id))
+    .map((node) => node.id);
+  const startIds = roots.length ? roots : nodes.slice(0, 1).map((node) => node.id);
+
+  function visit(nodeId) {
+    stateById.set(nodeId, "visiting");
+
+    (childrenById.get(nodeId) || []).forEach((connection) => {
+      const childState = stateById.get(connection.to);
+
+      if (childState === "visiting") return;
+
+      forwardIndexes.add(connection.index);
+
+      if (!childState) visit(connection.to);
+    });
+
+    stateById.set(nodeId, "visited");
+  }
+
+  startIds.forEach((nodeId) => {
+    if (!stateById.get(nodeId)) visit(nodeId);
+  });
+
+  nodes.forEach((node) => {
+    if (!stateById.get(node.id)) visit(node.id);
+  });
+
+  return indexedConnections
+    .filter((connection) => forwardIndexes.has(connection.index))
+    .map(({ index, ...connection }) => connection);
+}
+
+function getFlowchartRows(nodes, connections) {
+  const nodeById = new Map(nodes.map((node) => [node.id, node]));
+  const childrenById = new Map(nodes.map((node) => [node.id, []]));
+  const incomingCount = new Map(nodes.map((node) => [node.id, 0]));
+  const depthById = new Map(nodes.map((node) => [node.id, 0]));
+
+  connections.forEach((connection) => {
+    childrenById.get(connection.from)?.push(connection.to);
+    incomingCount.set(connection.to, (incomingCount.get(connection.to) || 0) + 1);
+  });
+
+  const queue = nodes.filter((node) => !incomingCount.get(node.id)).map((node) => node.id);
+  if (!queue.length && nodes[0]) queue.push(nodes[0].id);
+
+  while (queue.length) {
+    const currentId = queue.shift();
+    const currentDepth = depthById.get(currentId) || 0;
+
+    (childrenById.get(currentId) || []).forEach((childId) => {
+      const nextDepth = Math.max(depthById.get(childId) || 0, currentDepth + 1);
+      if (nextDepth > nodes.length) return;
+
+      depthById.set(childId, nextDepth);
+      queue.push(childId);
+    });
+  }
+
+  nodes.forEach((node, index) => {
+    if (!depthById.has(node.id)) depthById.set(node.id, index);
+  });
+
+  return nodes.reduce((rows, node) => {
+    const depth = depthById.get(node.id) || 0;
+
+    if (!rows[depth]) rows[depth] = [];
+    rows[depth].push(nodeById.get(node.id));
+    return rows;
+  }, []).filter(Boolean);
+}
+
+function getFlowchartColumns(nodes, connections, rows) {
+  const columnById = new Map(nodes.map((node) => [node.id, Number.isFinite(node.column) ? node.column : null]));
+  const incomingById = nodes.reduce((incoming, node) => incoming.set(node.id, []), new Map());
+  const outgoingById = nodes.reduce((outgoing, node) => outgoing.set(node.id, []), new Map());
+
+  connections.forEach((connection) => {
+    incomingById.get(connection.to)?.push(connection);
+    outgoingById.get(connection.from)?.push(connection);
+  });
+
+  rows.forEach((row) => {
+    row.forEach((node, index) => {
+      if (Number.isFinite(columnById.get(node.id))) return;
+
+      const incoming = incomingById.get(node.id) || [];
+      const parentColumns = incoming
+        .map((connection) => columnById.get(connection.from))
+        .filter(Number.isFinite);
+
+      if (parentColumns.length) {
+        columnById.set(node.id, average(parentColumns));
+      } else {
+        columnById.set(node.id, index - (row.length - 1) / 2);
+      }
+    });
+
+    row.forEach((node) => {
+      const outgoing = sortFlowchartBranches(outgoingById.get(node.id) || []);
+
+      if (outgoing.length < 2) return;
+
+      const parentColumn = columnById.get(node.id) || 0;
+      const offsets = getFlowchartBranchOffsets(outgoing.length);
+
+      outgoing.forEach((connection, index) => {
+        if ((incomingById.get(connection.to) || []).length > 1) return;
+        columnById.set(connection.to, parentColumn + offsets[index]);
+      });
+    });
+  });
+
+  relaxFlowchartColumns(rows, connections, columnById);
+
+  return columnById;
+}
+
+function sortFlowchartBranches(connections) {
+  return [...connections].sort((a, b) => getFlowchartBranchWeight(a) - getFlowchartBranchWeight(b));
+}
+
+function getFlowchartBranchWeight(connection) {
+  const label = cleanFlowchartLabel(connection.label || "").toLowerCase();
+
+  if (/^(yes|true|ok|continue|pass|success|bag|option a|a)$/.test(label)) return -2;
+  if (/^(no|false|retry|fail|failure|loose|option b|b)$/.test(label)) return 2;
+
+  return 0;
+}
+
+function getFlowchartBranchOffsets(count) {
+  if (count === 2) return [-1.8, 1.8];
+  if (count === 3) return [-2.15, 0, 2.15];
+  if (count === 4) return [-3, -1, 1, 3];
+  if (count === 5) return [-3.7, -1.85, 0, 1.85, 3.7];
+
+  const center = (count - 1) / 2;
+  return Array.from({ length: count }, (_, index) => (index - center) * 1.65);
+}
+
+function balanceFlowchartRowColumns(columns) {
+  if (columns.length < 2) return columns;
+
+  const minGap = columns.length > 4 ? 1.45 : 1.35;
+  const balanced = [...columns].sort((a, b) => a - b);
+
+  for (let index = 1; index < balanced.length; index += 1) {
+    if (balanced[index] - balanced[index - 1] < minGap) {
+      balanced[index] = balanced[index - 1] + minGap;
+    }
+  }
+
+  const beforeCenter = average(columns);
+  const afterCenter = average(balanced);
+
+  return balanced.map((column) => column - afterCenter + beforeCenter);
+}
+
+function relaxFlowchartColumns(rows, connections, columnById) {
+  const rowById = new Map();
+
+  rows.forEach((row, rowIndex) => {
+    row.forEach((node) => rowById.set(node.id, rowIndex));
+  });
+
+  rows.forEach((row) => {
+    row.forEach((node) => {
+      const outgoing = connections.filter((connection) => connection.from === node.id);
+
+      if (outgoing.length < 3) return;
+
+      const parentColumn = columnById.get(node.id) || 0;
+      const targets = outgoing
+        .map((connection) => ({
+          connection,
+          row: rowById.get(connection.to),
+          column: columnById.get(connection.to)
+        }))
+        .filter((target) => Number.isFinite(target.row) && Number.isFinite(target.column))
+        .sort((a, b) => a.column - b.column);
+      const minGap = outgoing.length > 4 ? 1.65 : 1.5;
+
+      targets.forEach((target, index) => {
+        const branchSide = index - (targets.length - 1) / 2;
+        const desiredColumn = parentColumn + branchSide * minGap;
+
+        if (Math.abs((columnById.get(target.connection.to) || 0) - parentColumn) < Math.abs(desiredColumn - parentColumn)) {
+          columnById.set(target.connection.to, desiredColumn);
+        }
+      });
+    });
+  });
+}
+
+function average(values) {
+  if (!values.length) return 0;
+
+  return values.reduce((sum, value) => sum + value, 0) / values.length;
+}
+
+function getFlowchartShapeType(node) {
+  if (/decision|choice|condition|yes|no|if/.test(node.type)) return "diamond";
+  if (/start|end|finish|terminal/.test(node.type)) return "circle";
+
+  return "square";
+}
+
+function getFlowchartShapeColor(node) {
+  if (/decision|choice|condition|yes|no|if/.test(node.type)) return "orange";
+  if (/start|end|finish|terminal/.test(node.type)) return "green";
+
+  return "white";
+}
+
+function getFlowchartConnectionSides(fromElement, toElement, connection = null, siblings = []) {
+  const fromCenter = {
+    x: fromElement.offsetLeft + fromElement.offsetWidth / 2,
+    y: fromElement.offsetTop + fromElement.offsetHeight / 2
+  };
+  const toCenter = {
+    x: toElement.offsetLeft + toElement.offsetWidth / 2,
+    y: toElement.offsetTop + toElement.offsetHeight / 2
+  };
+  const deltaX = toCenter.x - fromCenter.x;
+  const deltaY = toCenter.y - fromCenter.y;
+  const isDecisionBranch = fromElement.dataset.shape === "diamond" && siblings.length > 1;
+  const rowDelta = Number(toElement.dataset.flowRow) - Number(fromElement.dataset.flowRow);
+  const columnDelta = Number(toElement.dataset.flowColumn) - Number(fromElement.dataset.flowColumn);
+
+  if (Number.isFinite(rowDelta) && rowDelta < 0) {
+    return columnDelta >= 0 ? { from: "e", to: "e" } : { from: "w", to: "w" };
+  }
+
+  if (Number.isFinite(rowDelta) && rowDelta > 1 && Math.abs(deltaX) < fromElement.offsetWidth * 0.7) {
+    const side = getFlowchartOuterSide(connection, siblings);
+
+    return { from: side, to: side };
+  }
+
+  if (isDecisionBranch) {
+    const branchIndex = Math.max(0, siblings.indexOf(connection));
+
+    if (Math.abs(deltaX) > 16) {
+      return deltaX > 0 ? { from: "e", to: "w" } : { from: "w", to: "e" };
+    }
+
+    return branchIndex % 2 === 0 ? { from: "w", to: "e" } : { from: "e", to: "w" };
+  }
+
+  if (Math.abs(deltaX) > Math.abs(deltaY)) {
+    return deltaX > 0 ? { from: "e", to: "w" } : { from: "w", to: "e" };
+  }
+
+  return deltaY > 0 ? { from: "s", to: "n" } : { from: "n", to: "s" };
+}
+
+function getFlowchartOuterSide(connection, siblings = []) {
+  const branchIndex = Math.max(0, siblings.indexOf(connection));
+  const label = cleanFlowchartLabel(connection?.label || "").toLowerCase();
+
+  if (/^(yes|true|ok|continue|pass|success)$/.test(label)) return "w";
+  if (/^(no|false|retry|fail|failure)$/.test(label)) return "e";
+
+  return branchIndex % 2 === 0 ? "w" : "e";
+}
+
+function createFlowchartConnectionLabel(connection, fromElement, toElement, createdElements) {
+  const label = cleanFlowchartLabel(connection.label || "");
+
+  if (!label || label.length > 24 || isFlowchartMetaLabel(label)) return;
+
+  const fromCenter = {
+    x: fromElement.offsetLeft + fromElement.offsetWidth / 2,
+    y: fromElement.offsetTop + fromElement.offsetHeight / 2
+  };
+  const toCenter = {
+    x: toElement.offsetLeft + toElement.offsetWidth / 2,
+    y: toElement.offsetTop + toElement.offsetHeight / 2
+  };
+  const labelItem = createText(
+    (fromCenter.x + toCenter.x) / 2 - 28,
+    (fromCenter.y + toCenter.y) / 2 - 18,
+    label
+  );
+
+  setTextSize(labelItem, 18, false);
+  labelItem.style.fontWeight = "700";
+  labelItem.querySelector("[data-format='bold']").classList.add("active");
+  stopEditing(labelItem);
+  createdElements.push(labelItem);
+}
+
 function normalizeAIItems(items) {
   return items
     .map((item) => {
@@ -1728,7 +2273,8 @@ function copySelectedElement() {
       width: selectedElement.offsetWidth,
       height: selectedElement.offsetHeight,
       shape: selectedElement.dataset.shape,
-      color: selectedElement.dataset.color || "white"
+      color: selectedElement.dataset.color || "white",
+      label: selectedElement.querySelector(".shape-label")?.innerText || ""
     };
     return;
   }
@@ -1785,6 +2331,7 @@ function pasteCopiedElement() {
       copiedElementData.height
     );
     setShapeColor(pastedElement, copiedElementData.color || "white", false);
+    setShapeLabel(pastedElement, copiedElementData.label || "");
   }
 
   if (copiedElementData.type === "stroke") {
@@ -1847,6 +2394,7 @@ function duplicateElementForDrag(element) {
       element.offsetHeight
     );
     setShapeColor(duplicatedElement, element.dataset.color || "white", false);
+    setShapeLabel(duplicatedElement, element.querySelector(".shape-label")?.innerText || "");
   }
 
   if (element.classList.contains("stroke-item")) {
@@ -2539,5 +3087,6 @@ saveHistory();
 
 window.FigyBoard = {
   addAIStickies,
-  addAIText
+  addAIText,
+  addAIFlowchart
 };

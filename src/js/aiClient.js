@@ -13,12 +13,12 @@ function getFigyChatApiUrls() {
   return urls;
 }
 
-async function requestAIReply(messages) {
+async function requestAIReply(messages, options = {}) {
   let lastError = null;
 
   for (const chatApiUrl of figyChatApiUrls) {
     try {
-      return await requestChatReply(chatApiUrl, messages);
+      return await requestChatReply(chatApiUrl, messages, options);
     } catch (error) {
       lastError = error;
     }
@@ -27,7 +27,7 @@ async function requestAIReply(messages) {
   throw lastError || new Error("Chat is not available right now.");
 }
 
-async function requestChatReply(chatApiUrl, messages) {
+async function requestChatReply(chatApiUrl, messages, options = {}) {
   const response = await fetch(chatApiUrl, {
     method: "POST",
     headers: {
@@ -35,7 +35,8 @@ async function requestChatReply(chatApiUrl, messages) {
     },
     body: JSON.stringify({
       messages,
-      model: getSelectedAIModel()
+      model: getSelectedAIModel(),
+      maxTokens: options.maxTokens
     })
   });
 
