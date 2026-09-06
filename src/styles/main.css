@@ -469,6 +469,7 @@ body.dark .shape-tool-icon {
   inset: 0;
   width: 100%;
   height: 100%;
+  color: #707070;
   overflow: visible;
   pointer-events: none;
 }
@@ -508,14 +509,86 @@ body.dark .shape-tool-icon {
 }
 
 .connector-line {
-  stroke: var(--selection);
-  stroke-width: 2.5;
+  fill: none;
+  stroke: var(--connector-color, #707070);
+  stroke-width: var(--connector-width, 3);
   stroke-linecap: round;
-  pointer-events: none;
+  stroke-linejoin: round;
+  cursor: pointer;
+  pointer-events: stroke;
 }
 
 .connector-line-draft {
-  stroke-dasharray: 7 6;
+  opacity: .72;
+  cursor: crosshair;
+  pointer-events: none;
+}
+
+.connector-line.selected {
+  filter: drop-shadow(0 0 2px rgba(108, 92, 231, .55));
+}
+
+.connector-toolbar {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 90;
+  display: none;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 10px;
+  background: #1f1f1f;
+  border: 1px solid rgba(255,255,255,.1);
+  border-radius: 12px;
+  box-shadow: 0 2px 4px rgba(0,0,0,.18), 0 10px 28px rgba(0,0,0,.16);
+  color: #ffffff;
+  transform: translate(-50%, calc(-100% - 14px));
+}
+
+.connector-toolbar.open {
+  display: flex;
+}
+
+.connector-colors {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.connector-colors button {
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border: 2px solid rgba(255,255,255,.34);
+  border-radius: 50%;
+  background: var(--connector-swatch);
+  cursor: pointer;
+}
+
+.connector-colors button:hover,
+.connector-colors button.active {
+  outline: 2px solid #8b5cf6;
+  outline-offset: 3px;
+}
+
+.connector-width-control {
+  display: grid;
+  grid-template-columns: auto 84px 22px;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.connector-width-slider {
+  width: 84px;
+  accent-color: #8b5cf6;
+  cursor: pointer;
+}
+
+.connector-width-value {
+  color: rgba(255,255,255,.74);
+  text-align: right;
 }
 
 body.tool-pencil #board {
@@ -1376,20 +1449,22 @@ body.dark .sticky-ai-status {
 }
 
 .text-size-wrap {
-  min-width: 196px;
+  min-width: 118px;
 }
 
-.text-size-slider {
-  width: 104px;
-  cursor: pointer;
-  accent-color: #8b5cf6;
-}
-
-.text-size-value {
-  min-width: 28px;
+.text-size-select {
+  width: 94px;
+  appearance: none;
+  border: 0;
+  background: transparent;
   color: #ffffff;
-  font-size: 13px;
-  text-align: right;
+  cursor: pointer;
+  font: inherit;
+  outline: none;
+}
+
+.text-size-select option {
+  color: #1f1f1f;
 }
 
 .text-format-button {
@@ -1498,12 +1573,18 @@ body.dark .sticky-ai-status {
   outline-offset: 3px;
 }
 
-.sticky.selected .connector-handle {
+.connectable.selected .connector-handle,
+body.connecting .connectable .connector-handle {
   display: block;
 }
 
-.sticky.selected.multi-selected .connector-handle {
+.connectable.selected.multi-selected .connector-handle {
   display: none;
+}
+
+.connectable.connector-snap-target {
+  outline: 2px solid rgba(126, 200, 246, .55);
+  outline-offset: 5px;
 }
 
 .connector-handle {
@@ -1519,10 +1600,26 @@ body.dark .sticky-ai-status {
   z-index: 3;
 }
 
+.connector-handle:hover,
+body.connecting .connector-handle:hover {
+  transform: scale(1.2);
+}
+
+.connector-handle.snap-target {
+  background: #0ea5e9;
+  border-color: #ffffff;
+  box-shadow: 0 0 0 5px rgba(14, 165, 233, .18), var(--shadow-thumb);
+}
+
 .connector-handle-n {
   top: -8px;
   left: 50%;
   transform: translateX(-50%);
+}
+
+.connector-handle-n:hover,
+.connector-handle-n.snap-target {
+  transform: translateX(-50%) scale(1.2);
 }
 
 .connector-handle-e {
@@ -1531,16 +1628,31 @@ body.dark .sticky-ai-status {
   transform: translateY(-50%);
 }
 
+.connector-handle-e:hover,
+.connector-handle-e.snap-target {
+  transform: translateY(-50%) scale(1.2);
+}
+
 .connector-handle-s {
   bottom: -8px;
   left: 50%;
   transform: translateX(-50%);
 }
 
+.connector-handle-s:hover,
+.connector-handle-s.snap-target {
+  transform: translateX(-50%) scale(1.2);
+}
+
 .connector-handle-w {
   top: 50%;
   left: -8px;
   transform: translateY(-50%);
+}
+
+.connector-handle-w:hover,
+.connector-handle-w.snap-target {
+  transform: translateY(-50%) scale(1.2);
 }
 
 .resize-handle-nw {

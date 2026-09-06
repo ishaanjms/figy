@@ -107,7 +107,7 @@ function markActionUsed(actions, label) {
 }
 
 function renderMarkdown(markdown) {
-  const escaped = escapeHtml(markdown);
+  const escaped = escapeHtml(normalizeAssistantText(markdown));
   const lines = escaped.split(/\r?\n/);
   const html = [];
   let listType = null;
@@ -172,7 +172,7 @@ function renderMarkdown(markdown) {
       tableRows.forEach((row, index) => {
         const cells = row.replace(/^\||\|$/g, "").split("|").map((cell) => cell.trim());
         const tag = index === 0 ? "th" : "td";
-        html.push("<tr>" + cells.map((cell) => "<" + tag + ">" + renderInlineMarkdown(cell) + "</" + tag + ">").join("") + "</tr>");
+        html.push("<tr>" + cells.map((cell) => "<" + tag + ">" + renderTableCell(cell) + "</" + tag + ">").join("") + "</tr>");
       });
       html.push("</table>");
     }
@@ -185,6 +185,20 @@ function isMarkdownTableLine(line) {
   return line.includes("|") && line.split("|").length > 2;
 }
 
+function normalizeAssistantText(text) {
+  return String(text)
+    .replace(/\\n/g, "\n")
+    .replace(/\r\n/g, "\n");
+}
+
+function renderTableCell(cell) {
+  return cell
+    .split(/\n+|&lt;br\s*\/?&gt;|<br\s*\/?>/i)
+    .map((line) => renderInlineMarkdown(line.trim()))
+    .filter(Boolean)
+    .join("<br>");
+}
+
 function extractIdeasFromAIResponse(content) {
   const tableIdeas = extractTableIdeas(content);
   const lineIdeas = extractListIdeas(content);
@@ -193,7 +207,7 @@ function extractIdeasFromAIResponse(content) {
 }
 
 function extractListIdeas(content) {
-  return content
+  return normalizeAssistantText(content)
     .split(/\r?\n/)
     .map((line) => line.trim())
     .map((line) => line.match(/^[-*]\s+(.+)/) || line.match(/^\d+\.\s+(.+)/))
@@ -203,7 +217,7 @@ function extractListIdeas(content) {
 }
 
 function extractTableIdeas(content) {
-  return content
+  return normalizeAssistantText(content)
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter((line) => isMarkdownTableLine(line))
@@ -242,7 +256,9 @@ function createIdeaFromText(text) {
 }
 
 function cleanIdeaLine(line) {
-  return line
+  return normalizeAssistantText(line)
+    .replace(/<br\s*\/?>/gi, " ")
+    .replace(/&lt;br\s*\/?&gt;/gi, " ")
     .replace(/^[-*]\s+/, "")
     .replace(/^\d+\.\s+/, "")
     .replace(/\*\*/g, "")
@@ -313,6 +329,7 @@ function getAIHeading(content) {
 
 function renderInlineMarkdown(text) {
   return text
+    .replace(/&lt;br\s*\/?&gt;/gi, "<br>")
     .replace(/`([^`]+)`/g, "<code>$1</code>")
     .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
     .replace(/\*([^*]+)\*/g, "<em>$1</em>");

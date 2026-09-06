@@ -3,6 +3,8 @@ const canvas = document.getElementById("canvas");
 const drawLayer = document.getElementById("drawLayer");
 const marqueeSelection = document.createElement("div");
 marqueeSelection.className = "marquee-selection";
+const connectorToolbar = document.createElement("div");
+connectorToolbar.className = "connector-toolbar";
 const selectButton = document.getElementById("selectTool");
 const panButton = document.getElementById("panTool");
 const addButton = document.getElementById("addSticky");
@@ -72,6 +74,16 @@ const defaultTextSize = 28;
 const strokePadding = 14;
 const maxVisibleFileNameLength = 30;
 const modelStorageKey = "figy-ai-model";
+const defaultConnectorColor = "#707070";
+const defaultConnectorWidth = 3;
+const connectorSnapDistance = 72;
+const connectorColors = ["#707070", "#1f1f1f", "#ef4444", "#f97316", "#22c55e", "#0ea5e9", "#8b5cf6"];
+const textSizes = [
+  { label: "Small", value: 18 },
+  { label: "Medium", value: 28 },
+  { label: "Large", value: 44 },
+  { label: "Huge", value: 72 }
+];
 const textFonts = [
   { label: "Inter", value: "Inter, Arial, sans-serif" },
   { label: "Arial", value: "Arial, sans-serif" },
@@ -89,6 +101,61 @@ const shapeColors = [
   { name: "blue", value: "#a9daf7" },
   { name: "purple", value: "#d8c8ff" }
 ];
+
+function setupConnectorToolbar() {
+  connectorToolbar.innerHTML = `
+    <div class="connector-colors">
+      ${connectorColors.map((color) => (
+        `<button type="button" data-connector-color="${color}" style="--connector-swatch: ${color}" title="Connector color" aria-label="Connector color"></button>`
+      )).join("")}
+    </div>
+    <label class="connector-width-control">
+      <span>Width</span>
+      <input class="connector-width-slider" type="range" min="1" max="12" step="1" value="${defaultConnectorWidth}">
+      <output class="connector-width-value">${defaultConnectorWidth}</output>
+    </label>
+  `;
+
+  connectorToolbar.addEventListener("mousedown", (e) => {
+    e.stopPropagation();
+  });
+
+  connectorToolbar.addEventListener("click", (e) => {
+    const colorButton = e.target.closest("[data-connector-color]");
+
+    e.stopPropagation();
+
+    if (!colorButton || !selectedElement?.classList.contains("connector-line")) return;
+
+    setConnectorStyle(
+      selectedElement,
+      colorButton.dataset.connectorColor,
+      selectedElement.dataset.width || defaultConnectorWidth
+    );
+  });
+
+  connectorToolbar.querySelector(".connector-width-slider").addEventListener("input", (e) => {
+    if (!selectedElement?.classList.contains("connector-line")) return;
+
+    setConnectorStyle(
+      selectedElement,
+      selectedElement.dataset.color || defaultConnectorColor,
+      e.target.value,
+      false
+    );
+  });
+
+  connectorToolbar.querySelector(".connector-width-slider").addEventListener("change", (e) => {
+    if (!selectedElement?.classList.contains("connector-line")) return;
+
+    setConnectorStyle(
+      selectedElement,
+      selectedElement.dataset.color || defaultConnectorColor,
+      e.target.value,
+      true
+    );
+  });
+}
 
 function updateFileNameWidth() {
   const titleLength = Math.max(defaultFileName.length, fileName.value.length);
@@ -162,6 +229,7 @@ function setZoom(nextZoom, focalPoint = getBoardCenterPoint()) {
   document.documentElement.style.setProperty("--zoom", zoom);
   updateGridDensity();
   zoomLevel.value = Math.round(zoom * 100);
+  updateConnectorToolbar();
 }
 
 function updateGridDensity() {
@@ -188,6 +256,7 @@ function setPan(nextPanX, nextPanY) {
   panY = nextPanY;
   document.documentElement.style.setProperty("--pan-x", panX + "px");
   document.documentElement.style.setProperty("--pan-y", panY + "px");
+  updateConnectorToolbar();
 }
 
 function getWheelDelta(e) {
@@ -326,12 +395,13 @@ function serializeBoard() {
       };
     }
 
-    return {
-      ...baseData,
-      type: "shape",
-      shape: element.dataset.shape,
-      color: element.dataset.color || "white"
-    };
+      return {
+        ...baseData,
+        type: "shape",
+        id: element.dataset.elementId,
+        shape: element.dataset.shape,
+        color: element.dataset.color || "white"
+      };
   });
 
   const strokes = [...drawLayer.querySelectorAll(".drawing-stroke:not(.connector-line)")].map((stroke) => ({
@@ -344,7 +414,9 @@ function serializeBoard() {
     fromId: connector.dataset.fromId,
     fromSide: connector.dataset.fromSide,
     toId: connector.dataset.toId,
-    toSide: connector.dataset.toSide
+    toSide: connector.dataset.toSide,
+    color: connector.dataset.color || defaultConnectorColor,
+    width: Number(connector.dataset.width) || defaultConnectorWidth
   }));
 
   return { items, strokes, connectors };
@@ -381,13 +453,11 @@ function restoreBoard(snapshot) {
 
     if (item.type === "text") {
       element = createText(item.x, item.y, item.text);
-      element.style.fontSize = item.fontSize + "px";
+      setTextSize(element, item.fontSize, false);
       element.style.fontFamily = item.fontFamily;
       element.style.fontWeight = item.fontWeight;
       element.style.fontStyle = item.fontStyle;
       element.querySelector(".text-font-select").value = item.fontFamily;
-      element.querySelector(".text-size-slider").value = item.fontSize;
-      element.querySelector(".text-size-value").innerText = item.fontSize;
       element.querySelector("[data-format='bold']").classList.toggle("active", item.fontWeight === "700");
       element.querySelector("[data-format='italic']").classList.toggle("active", item.fontStyle === "italic");
       stopEditing(element);
@@ -395,6 +465,7 @@ function restoreBoard(snapshot) {
 
     if (item.type === "shape") {
       element = createShape(item.x, item.y, item.shape, item.width, item.height);
+      element.dataset.elementId = item.id || getNextElementId();
       setShapeColor(element, item.color || "white", false);
     }
 
@@ -409,7 +480,10 @@ function restoreBoard(snapshot) {
   });
 
   (snapshot.connectors || []).forEach((connectorData) => {
-    createConnectorLine(connectorData.fromId, connectorData.fromSide, connectorData.toId, connectorData.toSide);
+    createConnectorLine(connectorData.fromId, connectorData.fromSide, connectorData.toId, connectorData.toSide, {
+      color: connectorData.color,
+      width: connectorData.width
+    });
   });
   updateConnectorPositions();
   syncNextElementId();
@@ -418,8 +492,8 @@ function restoreBoard(snapshot) {
 }
 
 function syncNextElementId() {
-  const highestId = [...canvas.querySelectorAll(".sticky[data-element-id]")].reduce((highest, sticky) => {
-    const idNumber = Number(sticky.dataset.elementId.replace("item-", ""));
+  const highestId = [...canvas.querySelectorAll(".connectable[data-element-id]")].reduce((highest, element) => {
+    const idNumber = Number(element.dataset.elementId.replace("item-", ""));
     return Number.isFinite(idNumber) ? Math.max(highest, idNumber) : highest;
   }, 0);
 
@@ -458,6 +532,7 @@ function selectElement(element) {
   }
 
   markElementSelected(element);
+  updateConnectorToolbar();
 }
 
 function clearSelection() {
@@ -472,6 +547,7 @@ function clearSelection() {
 
   selectedElements.clear();
   selectedElement = null;
+  updateConnectorToolbar();
 }
 
 function selectElements(elements) {
@@ -484,6 +560,8 @@ function selectElements(elements) {
       stopEditing(element);
     });
   }
+
+  updateConnectorToolbar();
 }
 
 function updateMarqueeSelection(e) {
@@ -550,6 +628,8 @@ function startEditing(element) {
 }
 
 function stopEditing(element) {
+  if (!element || element.classList.contains("connector-line")) return;
+
   const editableArea = getEditableArea(element);
 
   editableArea.contentEditable = false;
@@ -678,7 +758,7 @@ function createSticky(x = 200, y = 150, text = "", shouldAvoidOverlap = true) {
   const colorMenu = document.createElement("div");
   const position = shouldAvoidOverlap ? findOpenStickyPosition(x, y) : { x, y };
 
-  sticky.className = "sticky";
+  sticky.className = "sticky connectable";
   sticky.dataset.elementId = getNextElementId();
   sticky.dataset.color = selectedStickyColor;
   sticky.style.left = position.x + "px";
@@ -852,26 +932,23 @@ function addResizeBehavior(element) {
   });
 }
 
-function addConnectorBehavior(sticky) {
-  sticky.querySelectorAll("[data-connector-side]").forEach((handle) => {
+function addConnectorBehavior(element) {
+  element.querySelectorAll("[data-connector-side]").forEach((handle) => {
     handle.addEventListener("mousedown", (e) => {
       if (activeTool !== "select") return;
 
       e.preventDefault();
       e.stopPropagation();
 
-      const startPoint = getConnectorPoint(sticky, handle.dataset.connectorSide);
-      const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
-      line.classList.add("connector-line", "connector-line-draft");
-      line.setAttribute("x1", startPoint.x);
-      line.setAttribute("y1", startPoint.y);
-      line.setAttribute("x2", startPoint.x);
-      line.setAttribute("y2", startPoint.y);
-      drawLayer.appendChild(line);
+      const startPoint = getConnectorPoint(element, handle.dataset.connectorSide);
+      const path = createConnectorPathElement(true);
+      path.setAttribute("d", getConnectorPath(startPoint, startPoint, handle.dataset.connectorSide, handle.dataset.connectorSide));
+      drawLayer.appendChild(path);
+      document.body.classList.add("connecting");
 
       activeConnector = {
-        line,
-        fromSticky: sticky,
+        line: path,
+        fromElement: element,
         fromSide: handle.dataset.connectorSide
       };
     });
@@ -882,15 +959,15 @@ function addConnectorBehavior(sticky) {
   });
 }
 
-function getStickyById(elementId) {
-  return canvas.querySelector(`.sticky[data-element-id="${elementId}"]`);
+function getConnectableById(elementId) {
+  return canvas.querySelector(`.connectable[data-element-id="${elementId}"]`);
 }
 
-function getConnectorPoint(sticky, side) {
-  const left = sticky.offsetLeft;
-  const top = sticky.offsetTop;
-  const width = sticky.offsetWidth;
-  const height = sticky.offsetHeight;
+function getConnectorPoint(element, side) {
+  const left = element.offsetLeft;
+  const top = element.offsetTop;
+  const width = element.offsetWidth;
+  const height = element.offsetHeight;
 
   if (side === "n") return { x: left + width / 2, y: top };
   if (side === "e") return { x: left + width, y: top + height / 2 };
@@ -898,30 +975,183 @@ function getConnectorPoint(sticky, side) {
   return { x: left, y: top + height / 2 };
 }
 
-function updateConnectorLine(line) {
-  const fromSticky = getStickyById(line.dataset.fromId);
-  const toSticky = getStickyById(line.dataset.toId);
+function getConnectableRect(element) {
+  return {
+    left: element.offsetLeft,
+    top: element.offsetTop,
+    right: element.offsetLeft + element.offsetWidth,
+    bottom: element.offsetTop + element.offsetHeight,
+    width: element.offsetWidth,
+    height: element.offsetHeight
+  };
+}
 
-  if (!fromSticky || !toSticky) {
+function getDistanceToRect(point, rect) {
+  const closestX = Math.max(rect.left, Math.min(point.x, rect.right));
+  const closestY = Math.max(rect.top, Math.min(point.y, rect.bottom));
+
+  return getDistance(point, { x: closestX, y: closestY });
+}
+
+function getNearestConnectorSide(element, point) {
+  const rect = getConnectableRect(element);
+  const isInside = (
+    point.x >= rect.left &&
+    point.x <= rect.right &&
+    point.y >= rect.top &&
+    point.y <= rect.bottom
+  );
+
+  if (isInside) {
+    const edgeDistances = [
+      { side: "n", distance: Math.abs(point.y - rect.top) },
+      { side: "e", distance: Math.abs(rect.right - point.x) },
+      { side: "s", distance: Math.abs(rect.bottom - point.y) },
+      { side: "w", distance: Math.abs(point.x - rect.left) }
+    ];
+
+    return edgeDistances.sort((a, b) => a.distance - b.distance)[0].side;
+  }
+
+  return ["n", "e", "s", "w"]
+    .map((side) => ({
+      side,
+      distance: getDistance(point, getConnectorPoint(element, side))
+    }))
+    .sort((a, b) => a.distance - b.distance)[0].side;
+}
+
+function findConnectorSnapTarget(point, sourceElement) {
+  const snapDistance = connectorSnapDistance / Math.max(zoom, safeZoom);
+
+  return [...canvas.querySelectorAll(".connectable")].reduce((nearest, element) => {
+    if (element === sourceElement) return nearest;
+
+    const distance = getDistanceToRect(point, getConnectableRect(element));
+
+    if (distance > snapDistance || distance >= nearest.distance) return nearest;
+
+    return {
+      element,
+      side: getNearestConnectorSide(element, point),
+      distance
+    };
+  }, { element: null, side: null, distance: Infinity });
+}
+
+function clearConnectorSnapTarget() {
+  if (!activeConnector?.snapElement) return;
+
+  activeConnector.snapElement.classList.remove("connector-snap-target");
+  activeConnector.snapElement
+    .querySelectorAll(".connector-handle.snap-target")
+    .forEach((handle) => handle.classList.remove("snap-target"));
+  activeConnector.snapElement = null;
+  activeConnector.snapSide = null;
+}
+
+function setConnectorSnapTarget(element, side) {
+  if (!activeConnector) return;
+
+  if (activeConnector.snapElement === element && activeConnector.snapSide === side) return;
+
+  clearConnectorSnapTarget();
+
+  if (!element || !side) return;
+
+  activeConnector.snapElement = element;
+  activeConnector.snapSide = side;
+  element.classList.add("connector-snap-target");
+  element.querySelector(`[data-connector-side="${side}"]`)?.classList.add("snap-target");
+}
+
+function createConnectorPathElement(isDraft) {
+  ensureConnectorMarker();
+
+  const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+
+  path.classList.add("connector-line");
+  if (isDraft) path.classList.add("connector-line-draft");
+  path.setAttribute("fill", "none");
+  path.setAttribute("marker-end", "url(#connectorArrow)");
+  path.style.setProperty("--connector-color", defaultConnectorColor);
+  path.style.setProperty("--connector-width", defaultConnectorWidth);
+
+  return path;
+}
+
+function ensureConnectorMarker() {
+  if (drawLayer.querySelector("#connectorArrow")) return;
+
+  const defs = document.createElementNS("http://www.w3.org/2000/svg", "defs");
+  const marker = document.createElementNS("http://www.w3.org/2000/svg", "marker");
+  const arrow = document.createElementNS("http://www.w3.org/2000/svg", "path");
+
+  marker.setAttribute("id", "connectorArrow");
+  marker.setAttribute("viewBox", "0 0 10 10");
+  marker.setAttribute("refX", "8.5");
+  marker.setAttribute("refY", "5");
+  marker.setAttribute("markerWidth", "7");
+  marker.setAttribute("markerHeight", "7");
+  marker.setAttribute("orient", "auto-start-reverse");
+  arrow.classList.add("connector-arrowhead");
+  arrow.setAttribute("d", "M 1 1 L 9 5 L 1 9");
+  arrow.setAttribute("fill", "none");
+  arrow.setAttribute("stroke", "context-stroke");
+  arrow.setAttribute("stroke-width", "1.8");
+  arrow.setAttribute("stroke-linecap", "round");
+  arrow.setAttribute("stroke-linejoin", "round");
+  marker.appendChild(arrow);
+  defs.appendChild(marker);
+  drawLayer.prepend(defs);
+}
+
+function getConnectorPath(fromPoint, toPoint, fromSide, toSide) {
+  const startTangent = getConnectorTangent(fromSide);
+  const endTangent = getConnectorTangent(toSide);
+  const distance = Math.hypot(toPoint.x - fromPoint.x, toPoint.y - fromPoint.y);
+  const bend = Math.max(48, Math.min(180, distance * 0.45));
+  const controlA = {
+    x: fromPoint.x + startTangent.x * bend,
+    y: fromPoint.y + startTangent.y * bend
+  };
+  const controlB = {
+    x: toPoint.x + endTangent.x * bend,
+    y: toPoint.y + endTangent.y * bend
+  };
+
+  return `M ${fromPoint.x} ${fromPoint.y} C ${controlA.x} ${controlA.y} ${controlB.x} ${controlB.y} ${toPoint.x} ${toPoint.y}`;
+}
+
+function getConnectorTangent(side) {
+  if (side === "n") return { x: 0, y: -1 };
+  if (side === "e") return { x: 1, y: 0 };
+  if (side === "s") return { x: 0, y: 1 };
+  return { x: -1, y: 0 };
+}
+
+function updateConnectorLine(line) {
+  const fromElement = getConnectableById(line.dataset.fromId);
+  const toElement = getConnectableById(line.dataset.toId);
+
+  if (!fromElement || !toElement) {
     line.remove();
     return;
   }
 
-  const fromPoint = getConnectorPoint(fromSticky, line.dataset.fromSide);
-  const toPoint = getConnectorPoint(toSticky, line.dataset.toSide);
+  const fromPoint = getConnectorPoint(fromElement, line.dataset.fromSide);
+  const toPoint = getConnectorPoint(toElement, line.dataset.toSide);
 
-  line.setAttribute("x1", fromPoint.x);
-  line.setAttribute("y1", fromPoint.y);
-  line.setAttribute("x2", toPoint.x);
-  line.setAttribute("y2", toPoint.y);
+  line.setAttribute("d", getConnectorPath(fromPoint, toPoint, line.dataset.fromSide, line.dataset.toSide));
 }
 
 function updateConnectorPositions() {
   drawLayer.querySelectorAll(".connector-line:not(.connector-line-draft)").forEach(updateConnectorLine);
+  updateConnectorToolbar();
 }
 
 function removeConnectorsForElement(element) {
-  if (!element.classList.contains("sticky")) return;
+  if (!element.dataset.elementId) return;
 
   drawLayer.querySelectorAll(".connector-line").forEach((line) => {
     if (line.dataset.fromId === element.dataset.elementId || line.dataset.toId === element.dataset.elementId) {
@@ -930,39 +1160,100 @@ function removeConnectorsForElement(element) {
   });
 }
 
-function createConnectorLine(fromId, fromSide, toId, toSide) {
-  const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+function createConnectorLine(fromId, fromSide, toId, toSide, options = {}) {
+  const line = createConnectorPathElement(false);
 
-  line.classList.add("connector-line");
   line.dataset.fromId = fromId;
   line.dataset.fromSide = fromSide;
   line.dataset.toId = toId;
   line.dataset.toSide = toSide;
+  setConnectorStyle(line, options.color || defaultConnectorColor, options.width || defaultConnectorWidth, false);
+  line.addEventListener("click", (e) => {
+    if (activeTool !== "select") return;
+
+    e.stopPropagation();
+    selectElement(line);
+  });
   drawLayer.appendChild(line);
   updateConnectorLine(line);
 
   return line;
 }
 
+function setConnectorStyle(line, color, width, shouldSave = true) {
+  const nextWidth = Math.max(1, Math.min(12, Number(width) || defaultConnectorWidth));
+
+  line.dataset.color = color || defaultConnectorColor;
+  line.dataset.width = nextWidth;
+  line.style.setProperty("--connector-color", line.dataset.color);
+  line.style.setProperty("--connector-width", nextWidth);
+  updateConnectorToolbar();
+
+  if (shouldSave) saveHistory();
+}
+
+function updateConnectorToolbar() {
+  if (!selectedElement || !selectedElement.classList.contains("connector-line")) {
+    connectorToolbar.classList.remove("open");
+    return;
+  }
+
+  const midpoint = getConnectorMidpoint(selectedElement);
+  const color = selectedElement.dataset.color || defaultConnectorColor;
+  const width = Number(selectedElement.dataset.width) || defaultConnectorWidth;
+
+  connectorToolbar.querySelectorAll("[data-connector-color]").forEach((button) => {
+    button.classList.toggle("active", button.dataset.connectorColor === color);
+  });
+  connectorToolbar.querySelector(".connector-width-slider").value = width;
+  connectorToolbar.querySelector(".connector-width-value").innerText = width;
+  connectorToolbar.style.left = midpoint.x * zoom + panX + "px";
+  connectorToolbar.style.top = midpoint.y * zoom + panY + "px";
+  connectorToolbar.classList.add("open");
+}
+
+function getConnectorMidpoint(line) {
+  try {
+    const middleLength = line.getTotalLength() / 2;
+    return line.getPointAtLength(middleLength);
+  } catch {
+    const fromElement = getConnectableById(line.dataset.fromId);
+    const toElement = getConnectableById(line.dataset.toId);
+
+    if (!fromElement || !toElement) return { x: 0, y: 0 };
+
+    const fromPoint = getConnectorPoint(fromElement, line.dataset.fromSide);
+    const toPoint = getConnectorPoint(toElement, line.dataset.toSide);
+    return {
+      x: (fromPoint.x + toPoint.x) / 2,
+      y: (fromPoint.y + toPoint.y) / 2
+    };
+  }
+}
+
 function finishConnectorDrag(e) {
   if (!activeConnector) return;
 
-  const targetHandle = document.elementFromPoint(e.clientX, e.clientY)?.closest("[data-connector-side]");
-  const targetSticky = targetHandle?.closest(".sticky");
+  const point = getBoardPoint(e);
+  const snapTarget = activeConnector.snapElement
+    ? { element: activeConnector.snapElement, side: activeConnector.snapSide }
+    : findConnectorSnapTarget(point, activeConnector.fromElement);
 
   activeConnector.line.remove();
 
-  if (targetSticky && targetSticky !== activeConnector.fromSticky) {
+  if (snapTarget.element && snapTarget.element !== activeConnector.fromElement) {
     createConnectorLine(
-      activeConnector.fromSticky.dataset.elementId,
+      activeConnector.fromElement.dataset.elementId,
       activeConnector.fromSide,
-      targetSticky.dataset.elementId,
-      targetHandle.dataset.connectorSide
+      snapTarget.element.dataset.elementId,
+      snapTarget.side
     );
     saveHistory();
   }
 
+  clearConnectorSnapTarget();
   activeConnector = null;
+  document.body.classList.remove("connecting");
 }
 
 function getShapeColorValue(colorName) {
@@ -977,6 +1268,28 @@ function setShapeColor(shapeItem, colorName, shouldSave = true) {
   shapeItem.querySelectorAll(".shape-color-menu [data-color]").forEach((button) => {
     button.classList.toggle("active", button.dataset.color === color.name);
   });
+
+  if (shouldSave) saveHistory();
+}
+
+function getClosestTextSizeName(fontSize) {
+  const size = Number(fontSize) || defaultTextSize;
+  const closestSize = textSizes.reduce((closest, current) => {
+    return Math.abs(current.value - size) < Math.abs(closest.value - size) ? current : closest;
+  }, textSizes[0]);
+
+  return closestSize.label;
+}
+
+function setTextSize(textItem, fontSize, shouldSave = true) {
+  const size = Number(fontSize) || defaultTextSize;
+  const sizeSelect = textItem.querySelector(".text-size-select");
+
+  textItem.style.fontSize = size + "px";
+
+  if (sizeSelect) {
+    sizeSelect.value = getClosestTextSizeName(size);
+  }
 
   if (shouldSave) saveHistory();
 }
@@ -1006,8 +1319,9 @@ function createText(x = 240, y = 180, text = "") {
       </select>
     </label>
     <label class="text-size-wrap" aria-label="Text size">
-      <input class="text-size-slider" type="range" min="12" max="96" step="1" value="${defaultTextSize}">
-      <span class="text-size-value">${defaultTextSize}</span>
+      <select class="text-size-select">
+        ${textSizes.map((size) => `<option value="${size.label}">${size.label}</option>`).join("")}
+      </select>
     </label>
     <button class="text-format-button" type="button" data-format="bold" title="Bold" aria-label="Bold">B</button>
     <button class="text-format-button text-format-italic" type="button" data-format="italic" title="Italic" aria-label="Italic">I</button>
@@ -1015,6 +1329,7 @@ function createText(x = 240, y = 180, text = "") {
 
   textItem.append(textContent, textToolbar);
   canvas.appendChild(textItem);
+  setTextSize(textItem, defaultTextSize, false);
 
   textItem.addEventListener("click", (e) => {
     e.stopPropagation();
@@ -1045,8 +1360,7 @@ function createText(x = 240, y = 180, text = "") {
   });
 
   const fontSelect = textToolbar.querySelector(".text-font-select");
-  const sizeSlider = textToolbar.querySelector(".text-size-slider");
-  const sizeValue = textToolbar.querySelector(".text-size-value");
+  const sizeSelect = textToolbar.querySelector(".text-size-select");
 
   fontSelect.addEventListener("change", (e) => {
     textItem.style.fontFamily = e.target.value;
@@ -1058,15 +1372,18 @@ function createText(x = 240, y = 180, text = "") {
     e.stopPropagation();
   });
 
-  sizeSlider.addEventListener("mousedown", (e) => {
+  sizeSelect.addEventListener("mousedown", (e) => {
     e.stopPropagation();
   });
 
-  sizeSlider.addEventListener("input", (e) => {
-    const nextSize = e.target.value;
+  sizeSelect.addEventListener("click", (e) => {
+    e.stopPropagation();
+  });
 
-    textItem.style.fontSize = nextSize + "px";
-    sizeValue.innerText = nextSize;
+  sizeSelect.addEventListener("change", (e) => {
+    const selectedSize = textSizes.find((size) => size.label === e.target.value) || textSizes[1];
+
+    setTextSize(textItem, selectedSize.value, false);
     selectElement(textItem);
     saveHistory();
   });
@@ -1100,7 +1417,8 @@ function createShape(x = 260, y = 200, shape = selectedShape, width = 120, heigh
   const shapeItem = document.createElement("div");
   const shapeColorMenu = document.createElement("div");
 
-  shapeItem.className = "shape-item";
+  shapeItem.className = "shape-item connectable";
+  shapeItem.dataset.elementId = getNextElementId();
   shapeItem.dataset.shape = shape;
   shapeItem.style.left = x + "px";
   shapeItem.style.top = y + "px";
@@ -1108,6 +1426,10 @@ function createShape(x = 260, y = 200, shape = selectedShape, width = 120, heigh
   shapeItem.style.height = height + "px";
   shapeItem.innerHTML = `
     ${getShapeSvg(shape)}
+    <span class="connector-handle connector-handle-n" data-connector-side="n"></span>
+    <span class="connector-handle connector-handle-e" data-connector-side="e"></span>
+    <span class="connector-handle connector-handle-s" data-connector-side="s"></span>
+    <span class="connector-handle connector-handle-w" data-connector-side="w"></span>
     <span class="resize-handle resize-handle-nw" data-resize-handle="nw"></span>
     <span class="resize-handle resize-handle-ne" data-resize-handle="ne"></span>
     <span class="resize-handle resize-handle-sw" data-resize-handle="sw"></span>
@@ -1133,6 +1455,7 @@ function createShape(x = 260, y = 200, shape = selectedShape, width = 120, heigh
   });
 
   addResizeBehavior(shapeItem);
+  addConnectorBehavior(shapeItem);
 
   shapeColorMenu.addEventListener("mousedown", (e) => {
     e.preventDefault();
@@ -1323,10 +1646,8 @@ function addAIText(text, options = {}) {
   const textItem = createText(center.x - 160, center.y - 40, cleanText);
   const fontSize = options.heading ? 44 : 24;
 
-  textItem.style.fontSize = fontSize + "px";
+  setTextSize(textItem, fontSize, false);
   textItem.style.fontWeight = options.heading ? "700" : "500";
-  textItem.querySelector(".text-size-slider").value = fontSize;
-  textItem.querySelector(".text-size-value").innerText = fontSize;
   textItem.querySelector("[data-format='bold']").classList.toggle("active", options.heading);
   isSkippingHistory = true;
   stopEditing(textItem);
@@ -1443,13 +1764,11 @@ function pasteCopiedElement() {
 
   if (copiedElementData.type === "text") {
     pastedElement = createText(x, y, copiedElementData.text);
-    pastedElement.style.fontSize = copiedElementData.fontSize + "px";
+    setTextSize(pastedElement, copiedElementData.fontSize, false);
     pastedElement.style.fontFamily = copiedElementData.fontFamily;
     pastedElement.style.fontWeight = copiedElementData.fontWeight;
     pastedElement.style.fontStyle = copiedElementData.fontStyle;
     pastedElement.querySelector(".text-font-select").value = copiedElementData.fontFamily;
-    pastedElement.querySelector(".text-size-slider").value = copiedElementData.fontSize;
-    pastedElement.querySelector(".text-size-value").innerText = copiedElementData.fontSize;
     pastedElement.querySelector("[data-format='bold']").classList.toggle("active", copiedElementData.fontWeight === "700");
     pastedElement.querySelector("[data-format='italic']").classList.toggle("active", copiedElementData.fontStyle === "italic");
     isSkippingHistory = true;
@@ -1507,13 +1826,11 @@ function duplicateElementForDrag(element) {
     const fontStyle = element.style.fontStyle || "normal";
 
     duplicatedElement = createText(x, y, element.querySelector(".text-content").innerText);
-    duplicatedElement.style.fontSize = fontSize + "px";
+    setTextSize(duplicatedElement, fontSize, false);
     duplicatedElement.style.fontFamily = fontFamily;
     duplicatedElement.style.fontWeight = fontWeight;
     duplicatedElement.style.fontStyle = fontStyle;
     duplicatedElement.querySelector(".text-font-select").value = fontFamily;
-    duplicatedElement.querySelector(".text-size-slider").value = fontSize;
-    duplicatedElement.querySelector(".text-size-value").innerText = fontSize;
     duplicatedElement.querySelector("[data-format='bold']").classList.toggle("active", fontWeight === "700");
     duplicatedElement.querySelector("[data-format='italic']").classList.toggle("active", fontStyle === "italic");
     isSkippingHistory = true;
@@ -1716,6 +2033,7 @@ function resizeSelectedShape(e) {
   activeResize.element.style.top = nextTop + "px";
   activeResize.element.style.width = nextWidth + "px";
   activeResize.element.style.height = nextHeight + "px";
+  updateConnectorPositions();
   activeResizeMoved = true;
 }
 
@@ -1978,8 +2296,13 @@ board.addEventListener("pointerdown", (e) => {
 document.addEventListener("pointermove", (e) => {
   if (activeConnector) {
     const point = getBoardPoint(e);
-    activeConnector.line.setAttribute("x2", point.x);
-    activeConnector.line.setAttribute("y2", point.y);
+    const fromPoint = getConnectorPoint(activeConnector.fromElement, activeConnector.fromSide);
+    const snapTarget = findConnectorSnapTarget(point, activeConnector.fromElement);
+    const toPoint = snapTarget.element ? getConnectorPoint(snapTarget.element, snapTarget.side) : point;
+    const toSide = snapTarget.side || activeConnector.fromSide;
+
+    setConnectorSnapTarget(snapTarget.element, snapTarget.side);
+    activeConnector.line.setAttribute("d", getConnectorPath(fromPoint, toPoint, activeConnector.fromSide, toSide));
     return;
   }
 
@@ -2073,6 +2396,20 @@ board.addEventListener("dblclick", (e) => {
 
 function eraseAtPoint(e) {
   const target = document.elementFromPoint(e.clientX, e.clientY);
+  const connector = target && target.closest(".connector-line");
+
+  if (connector && drawLayer.contains(connector)) {
+    if (selectedElements.has(connector)) {
+      selectedElements.delete(connector);
+      if (connector === selectedElement) selectedElement = null;
+      updateConnectorToolbar();
+    }
+
+    connector.remove();
+    activeEraserRemoved = true;
+    return;
+  }
+
   const erasable = target && target.closest(".sticky, .text-item, .shape-item, .stroke-item");
 
   if (erasable && canvas.contains(erasable)) {
@@ -2184,10 +2521,12 @@ document.addEventListener("keydown", (e) => {
   });
   selectedElements.clear();
   selectedElement = null;
+  updateConnectorToolbar();
   saveHistory();
 });
 
-board.appendChild(marqueeSelection);
+setupConnectorToolbar();
+board.append(connectorToolbar, marqueeSelection);
 setZoom(zoom);
 setPan(panX, panY);
 setActiveTool(activeTool);
