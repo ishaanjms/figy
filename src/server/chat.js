@@ -1,9 +1,12 @@
 const { readJsonBody, sendJson } = require("./http");
 
-const defaultModel = "openai/gpt-oss-120b";
+const defaultHuggingFaceModel = "openai/gpt-oss-120b";
+const defaultGeminiModel = "gemini-2.5-flash";
 const allowedModels = new Set([
-  defaultModel,
-  "Qwen/Qwen3.8-2.4T-A95B"
+  defaultHuggingFaceModel,
+  "Qwen/Qwen3.8-2.4T-A95B",
+  defaultGeminiModel,
+  "gemini-2.0-flash"
 ]);
 const defaultSystemPrompt = "You are Figy Assistant, a concise helper for brainstorming on a whiteboard.";
 const defaultMaxTokens = 1200;
@@ -12,21 +15,26 @@ async function handleChatRequest(req, res, env) {
   const body = await readJsonBody(req);
   const messages = Array.isArray(body.messages) ? body.messages : [];
   const model = getRequestedModel(body.model, env);
+  const provider = getProvider(model, env);
   const maxTokens = getMaxTokens(env, body.maxTokens);
-  const apiKey = env.HUGGINGFACE_API_KEY;
+  const apiKey = getProviderApiKey(provider, env);
 
   if (!apiKey) {
     sendJson(res, 200, {
-      reply: "Add your Hugging Face API key to .env as HUGGINGFACE_API_KEY, then restart the Figy server. For now, the chat panel is ready and connected locally."
+      reply: "Add your Gemini API key to .env as GEMINI_API_KEY, or add a Hugging Face key as HUGGINGFACE_API_KEY, then restart the Figy server."
     });
     return;
   }
 
-  const reply = await runChat(messages, env, model, maxTokens);
+  const reply = await runChat(messages, env, model, provider, maxTokens);
   sendJson(res, 200, { reply });
 }
 
-async function runChat(messages, env, model, maxTokens) {
+async function runChat(messages, env, model, provider, maxTokens) {
+  if (provider === "gemini") {
+    return runGeminiChat(messages, env, getGeminiModel(env, model), maxTokens);
+  }
+
   if (env.USE_LANGCHAIN === "true") {
     try {
       return await runLangChainChat(messages, env, model, maxTokens);
@@ -35,7 +43,51 @@ async function runChat(messages, env, model, maxTokens) {
     }
   }
 
-  return runHuggingFaceChat(messages, env, model, maxTokens);
+  try {
+    return await runHuggingFaceChat(messages, env, model, maxTokens);
+  } catch (error) {
+    if (env.GEMINI_API_KEY) {
+      console.warn("Hugging Face unavailable, falling back to Gemini:", error.message);
+      return runGeminiChat(messages, env, getGeminiModel(env), maxTokens);
+    }
+
+    throw error;
+  }
+}
+
+async function runGeminiChat(messages, env, model, maxTokens) {
+  const response = await fetch("https://generativelanguage.googleapis.com/v1beta/models/" + model + ":generateContent", {
+    method: "POST",
+    headers: {
+      "x-goog-api-key": env.GEMINI_API_KEY,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      systemInstruction: {
+        parts: [{ text: getSystemPrompt(env) }]
+      },
+      contents: normalizeGeminiMessages(messages),
+      generationConfig: {
+        temperature: 0.7,
+        maxOutputTokens: maxTokens
+      }
+    })
+  });
+  const data = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw new Error(data.error?.message || data.error || "Gemini request failed.");
+  }
+
+  const reply = data.candidates?.[0]?.content?.parts
+    ?.map((part) => part.text || "")
+    .join("")
+    .trim();
+
+  if (reply) return cleanReply(reply);
+  if (data.error) throw new Error(data.error?.message || data.error);
+
+  return "I did not get a readable reply from Gemini.";
 }
 
 async function runLangChainChat(messages, env, model, maxTokens) {
@@ -95,7 +147,7 @@ async function runHuggingFaceChat(messages, env, model, maxTokens) {
 }
 
 async function runHuggingFaceRouterChat(messages, env, maxTokens) {
-  const model = getModel(env);
+  const model = getHuggingFaceModel(env);
   const response = await fetch("https://router.huggingface.co/v1/chat/completions", {
     method: "POST",
     headers: {
@@ -167,20 +219,63 @@ function formatConversation(messages) {
     .join("\n");
 }
 
+function normalizeGeminiMessages(messages) {
+  const normalized = messages
+    .filter((message) => message && typeof message.content === "string")
+    .map((message) => ({
+      role: message.role === "assistant" ? "model" : "user",
+      parts: [{ text: message.content.trim() }]
+    }))
+    .filter((message) => message.parts[0].text);
+
+  return normalized.length ? normalized : [{ role: "user", parts: [{ text: "Hello" }] }];
+}
+
 function getSystemPrompt(env) {
   return env.CHAT_SYSTEM_PROMPT || defaultSystemPrompt;
 }
 
-function getModel(env) {
-  return env.HUGGINGFACE_MODEL || defaultModel;
+function getHuggingFaceModel(env) {
+  return env.HUGGINGFACE_MODEL || defaultHuggingFaceModel;
+}
+
+function getGeminiModel(env, requestedModel = "") {
+  if (env.GEMINI_MODEL) return env.GEMINI_MODEL;
+  if (isGeminiModel(requestedModel)) return requestedModel;
+
+  return defaultGeminiModel;
 }
 
 function getRequestedModel(requestedModel, env) {
   const model = typeof requestedModel === "string" && requestedModel.trim()
     ? requestedModel.trim()
-    : getModel(env);
+    : getDefaultModel(env);
 
-  return allowedModels.has(model) ? model : defaultModel;
+  if (allowedModels.has(model) || isGeminiModel(model)) return model;
+
+  return getDefaultModel(env);
+}
+
+function getDefaultModel(env) {
+  return env.GEMINI_API_KEY && !env.HUGGINGFACE_API_KEY ? getGeminiModel(env) : getHuggingFaceModel(env);
+}
+
+function getProvider(model, env) {
+  const requestedProvider = String(env.AI_PROVIDER || "").trim().toLowerCase();
+
+  if (requestedProvider === "gemini" || requestedProvider === "huggingface") return requestedProvider;
+  if (isGeminiModel(model)) return "gemini";
+  if (env.GEMINI_API_KEY && !env.HUGGINGFACE_API_KEY) return "gemini";
+
+  return "huggingface";
+}
+
+function getProviderApiKey(provider, env) {
+  return provider === "gemini" ? env.GEMINI_API_KEY : env.HUGGINGFACE_API_KEY;
+}
+
+function isGeminiModel(model) {
+  return /^gemini-/i.test(String(model || ""));
 }
 
 function cleanReply(reply) {

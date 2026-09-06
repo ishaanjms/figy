@@ -15,7 +15,7 @@ Figy is a lightweight FigJam-style whiteboard built with plain HTML, CSS, JavaSc
 - Pan and zoom the board
 - Switch between light and dark mode
 - Use a small AI chatbot panel
-- Switch between supported Hugging Face chat models from the board controls
+- Switch between supported Gemini and Hugging Face chat models from the AI settings
 
 ## Project Structure
 
@@ -31,7 +31,7 @@ src/
   styles/
     main.css         App styling
   server/
-    chat.js          Hugging Face chat logic, with an optional LangChain path
+    chat.js          Gemini and Hugging Face chat logic, with an optional LangChain path
     env.js           .env loader
     http.js          JSON request/response helpers
     static.js        Static file serving
@@ -57,7 +57,7 @@ npm install
 Create or update `.env`:
 
 ```text
-HUGGINGFACE_API_KEY=your_hugging_face_token_here
+GEMINI_API_KEY=your_gemini_key_here
 ```
 
 Start the app:
@@ -92,7 +92,7 @@ Logs are written to `logs/` if you need to debug the background server.
 
 ## Deploy To Vercel
 
-Before deploying, create a fresh Hugging Face token and use that on Vercel.
+Before deploying, create a fresh Gemini key and use that on Vercel.
 
 1. Push this folder to a GitHub repository.
 2. Import the repository in Vercel.
@@ -100,31 +100,33 @@ Before deploying, create a fresh Hugging Face token and use that on Vercel.
 4. Add this variable for Production and Preview:
 
 ```text
-HUGGINGFACE_API_KEY=your_hugging_face_token_here
+GEMINI_API_KEY=your_gemini_key_here
 ```
 
 5. Deploy the project.
 
 On Vercel, the app uses `/api/chat`. The local `server.js` is only for running Figy on your computer.
 
-The app includes a small AI model selector near the zoom controls. Only `HUGGINGFACE_API_KEY` needs to be stored as a Vercel environment variable.
+The app includes a small AI model selector in the chatbot header. Only the private API key needs to be stored as a Vercel environment variable.
 
 Vercel runs `npm run build`, which copies the static app into `dist/`. The project is configured to serve `dist/` as the website output.
 
 ## AI Notes
 
-The Hugging Face token is read by the local server from `.env`. It is not placed in browser JavaScript.
+The Gemini key is read by the local server from `.env`. It is not placed in browser JavaScript.
 
-On Vercel, the Hugging Face token is read from Vercel Environment Variables. Do not upload `.env`.
+On Vercel, the Gemini key is read from Vercel Environment Variables. Do not upload `.env`.
 
 Default AI settings live in `src/server/chat.js`:
 
 ```text
-Default model: openai/gpt-oss-120b
-Available models: openai/gpt-oss-120b, Qwen/Qwen3.8-2.4T-A95B
-Max tokens: 700
+Default model: gemini-2.5-flash
+Available models: gemini-2.5-flash, gemini-2.0-flash, openai/gpt-oss-120b, Qwen/Qwen3.8-2.4T-A95B
+Max tokens: 1200
 LangChain: optional and off by default
 ```
+
+If `GEMINI_API_KEY` is present and `HUGGINGFACE_API_KEY` is missing, Figy automatically uses Gemini. Hugging Face remains available as a fallback provider when configured.
 
 The server blocks private files like `.env` from being served in the browser.
 

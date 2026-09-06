@@ -32,7 +32,7 @@ src/styles/
 
 src/server/
   chat.js
-    Hugging Face router, legacy Hugging Face endpoint, optional LangChain path.
+    Gemini route, Hugging Face router, legacy Hugging Face endpoint, optional LangChain path.
   env.js
     Minimal .env parser.
   http.js
@@ -93,7 +93,7 @@ This project is now Vercel-ready.
 Required Vercel Environment Variables:
 
 ```text
-HUGGINGFACE_API_KEY
+GEMINI_API_KEY
 ```
 
 Do not expose or print secrets. If a token appears in output, recommend rotating it before deployment.
@@ -119,11 +119,12 @@ node --check api/chat.js
 
 ## AI Setup
 
-Secrets live in `.env`. Never print or expose `HUGGINGFACE_API_KEY`.
+Secrets live in `.env`. Never print or expose `GEMINI_API_KEY` or `HUGGINGFACE_API_KEY`.
 
 Current expected env keys:
 
 ```text
+GEMINI_API_KEY=
 HUGGINGFACE_API_KEY=
 ```
 
@@ -131,7 +132,7 @@ The browser calls AI through `window.FigyAI.requestAIReply()` from `src/js/aiCli
 
 In production, `src/js/aiClient.js` only calls `/api/chat`. On local static previews, it can also fall back to `http://127.0.0.1:4317/api/chat`.
 
-`src/server/chat.js` uses the Hugging Face OpenAI-compatible router for `openai/gpt-oss-*` models. It falls back to the legacy Hugging Face inference endpoint for other models unless `HUGGINGFACE_API_MODE` is set.
+`src/server/chat.js` uses Gemini by default when `GEMINI_API_KEY` is present. It also supports the Hugging Face OpenAI-compatible router for `openai/gpt-oss-*` and `Qwen/*` models, and falls back to the legacy Hugging Face inference endpoint for other Hugging Face models unless `HUGGINGFACE_API_MODE` is set.
 
 The server must remain bound to `127.0.0.1` by default. Do not expose `.env`, dotfiles, or `node_modules`.
 

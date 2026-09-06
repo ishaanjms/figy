@@ -1,5 +1,5 @@
 const figyChatApiUrls = getFigyChatApiUrls();
-const defaultFigyModel = "openai/gpt-oss-120b";
+const defaultFigyModel = "gemini-2.5-flash";
 const figyModelStorageKey = "figy-ai-model";
 
 function getFigyChatApiUrls() {
