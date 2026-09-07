@@ -608,6 +608,10 @@ body.tool-select #board {
   cursor: url("../../assets/basil_cursor-solid.svg") 5 3, default;
 }
 
+body.dark.tool-select #board {
+  cursor: url("../../assets/basil_cursor-solid-white.svg") 5 3, default;
+}
+
 body.tool-pan #board {
   cursor: grab;
 }
