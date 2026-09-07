@@ -104,6 +104,18 @@ const shapeColors = [
   { name: "purple", value: "#d8c8ff" }
 ];
 
+function getShapeCssColor(colorName) {
+  return `var(--shape-color-${colorName}, ${getShapeColorValue(colorName)})`;
+}
+
+function getConnectorCssColor(color) {
+  return color === defaultConnectorColor ? "var(--connector-default)" : color;
+}
+
+function getStrokeCssColor(color) {
+  return color === "#1f1f1f" ? "var(--ink-default)" : color;
+}
+
 function setupConnectorToolbar() {
   connectorToolbar.innerHTML = `
     <div class="connector-colors">
@@ -1078,7 +1090,7 @@ function createConnectorPathElement(isDraft) {
   if (isDraft) path.classList.add("connector-line-draft");
   path.setAttribute("fill", "none");
   path.setAttribute("marker-end", "url(#connectorArrow)");
-  path.style.setProperty("--connector-color", defaultConnectorColor);
+  path.style.setProperty("--connector-color", getConnectorCssColor(defaultConnectorColor));
   path.style.setProperty("--connector-width", defaultConnectorWidth);
 
   return path;
@@ -1189,7 +1201,7 @@ function setConnectorStyle(line, color, width, shouldSave = true) {
 
   line.dataset.color = color || defaultConnectorColor;
   line.dataset.width = nextWidth;
-  line.style.setProperty("--connector-color", line.dataset.color);
+  line.style.setProperty("--connector-color", getConnectorCssColor(line.dataset.color));
   line.style.setProperty("--connector-width", nextWidth);
   updateConnectorToolbar();
 
@@ -1268,7 +1280,7 @@ function setShapeColor(shapeItem, colorName, shouldSave = true) {
   const color = shapeColors.find((shapeColor) => shapeColor.name === colorName) || shapeColors[0];
 
   shapeItem.dataset.color = color.name;
-  shapeItem.style.setProperty("--shape-item-fill", color.value);
+  shapeItem.style.setProperty("--shape-item-fill", getShapeCssColor(color.name));
   shapeItem.querySelectorAll(".shape-color-menu [data-color]").forEach((button) => {
     button.classList.toggle("active", button.dataset.color === color.name);
   });
@@ -1552,7 +1564,7 @@ function createStrokeItemFromData(strokeData, shouldSelect = false) {
   stroke.setAttribute("fill", "none");
   stroke.setAttribute("stroke", color);
   stroke.setAttribute("stroke-width", widthValue);
-  stroke.style.setProperty("--stroke-color", color);
+  stroke.style.setProperty("--stroke-color", getStrokeCssColor(color));
   stroke.style.setProperty("--stroke-width", widthValue);
   strokeSvg.appendChild(stroke);
   strokeItem.appendChild(strokeSvg);
@@ -2831,7 +2843,7 @@ board.addEventListener("pointerdown", (e) => {
     activeStroke.setAttribute("fill", "none");
     activeStroke.setAttribute("stroke", selectedPencilColor);
     activeStroke.setAttribute("stroke-width", selectedPencilWidth);
-    activeStroke.style.setProperty("--stroke-color", selectedPencilColor);
+    activeStroke.style.setProperty("--stroke-color", getStrokeCssColor(selectedPencilColor));
     activeStroke.style.setProperty("--stroke-width", selectedPencilWidth);
     activeStrokePoints = [point];
     updateStrokePoints(activeStroke);
