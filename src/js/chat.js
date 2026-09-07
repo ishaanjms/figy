@@ -54,7 +54,7 @@ function appendAssistantActions(messageElement, message, index) {
 
   if (canCreateFlowchart) {
     actions.appendChild(createChatAction("Add flowchart", async () => {
-      markActionUsed(actions, "Building flowchart...");
+      markActionUsed(actions, "Running 3-agent workflow...");
       const plan = await generateFlowchartPlan(sourcePrompt, message.content);
 
       window.FigyBoard.addAIFlowchart(plan);
@@ -174,12 +174,17 @@ function getAssistantDisplayContent(content, index = -1) {
 
 function formatFlowchartDisplay(displayPlan) {
   const title = displayPlan.title || "Flowchart plan";
-  const steps = displayPlan.nodes.slice(0, 8).map((node, index) => {
-    const detail = node.detail ? " - " + node.detail : "";
+  const displayNodes = uniqueFlowchartNodes(displayPlan.nodes.map((node) => ({
+    ...node,
+    label: cleanFlowchartFallbackText(node.label),
+    detail: cleanFlowchartFallbackText(node.detail || "")
+  })).filter((node) => node.label));
+  const steps = displayNodes.slice(0, 8).map((node, index) => {
+    const detail = node.detail && node.detail.toLowerCase() !== node.label.toLowerCase() ? " - " + node.detail : "";
 
     return `${index + 1}. ${node.label}${detail}`;
   });
-  const moreText = displayPlan.nodes.length > steps.length ? `\n\nPlus ${displayPlan.nodes.length - steps.length} more step${displayPlan.nodes.length - steps.length === 1 ? "" : "s"} in the generated board.` : "";
+  const moreText = displayNodes.length > steps.length ? `\n\nPlus ${displayNodes.length - steps.length} more step${displayNodes.length - steps.length === 1 ? "" : "s"} in the generated board.` : "";
 
   return [
     `**${title}**`,
@@ -215,61 +220,15 @@ async function generateFlowchartPlan(userPrompt, assistantReply) {
 
   if (userMermaidPlan.nodes.length) return userMermaidPlan;
 
-  const reply = await window.FigyAI.requestAIReply([
-    {
-      role: "user",
-      content: [
-        "You are Figy's internal agentic flowchart builder. Produce a high-quality editable whiteboard plan.",
-        "",
-        "Think as three agents, but output only the final JSON:",
-        "1. Process analyst: infer the missing practical steps from the user's goal. Do not require the user to provide every detail.",
-        "2. Branch planner: identify real choices, alternatives, exceptions, and optional paths.",
-        "3. Board executor: convert the plan into nodes and directed connections for a FigJam-style canvas.",
-        "",
-        "Return only valid minified JSON. No markdown fences, no Mermaid, no ASCII art, no prose.",
-        "Schema:",
-        "{\"title\":\"Short title\",\"nodes\":[{\"id\":\"stable-id\",\"type\":\"start|step|decision|end\",\"label\":\"User-facing label\",\"detail\":\"Optional detail\",\"row\":0,\"column\":0}],\"connections\":[{\"from\":\"stable-id\",\"to\":\"stable-id\",\"label\":\"Optional choice label\"}]}",
-        "",
-        "Quality rules:",
-        "- Build the complete useful process, not a tiny summary.",
-        "- Use 6 to 14 nodes for ordinary processes.",
-        "- Use decision nodes for meaningful branches such as options, yes/no checks, failures, or alternatives.",
-        "- A decision node must have at least two outgoing connections with different labels.",
-        "- Branches may rejoin later when the process converges.",
-        "- Include row and column numbers. Top-to-bottom flow increases row. Put alternative branches in different columns.",
-        "- Keep node labels human readable. Never use internal ids, arrows, brackets, numbering, Mermaid syntax, or words like ASCII.",
-        "- Keep labels under 46 characters. Keep details under 120 characters.",
-        "- Put choice names on connection.label, not inside the decision label.",
-        "- Do not create separate nodes for simple ingredient lists unless they are actual process steps.",
-        "- Prefer a useful real-world flow over a strictly linear list.",
-        "",
-        "User request:",
-        userPrompt || "Create a useful process flowchart.",
-        "",
-        "Context from the previous assistant reply, if useful. Ignore its formatting and diagrams:",
-        assistantReply
-      ].join("\n")
-    }
-  ], { maxTokens: 2400 });
-  const parsedPlan = parseFlowchartPlan(reply);
+  let agentPlan = {};
 
-  if (isUsableFlowchartPlan(parsedPlan)) return normalizeChatFlowchartPlan(parsedPlan, userPrompt);
-
-  if (isJsonLikeFlowchartText(reply)) {
-    throw new Error("The AI returned an incomplete flowchart plan. Try again, or paste Mermaid code directly.");
+  try {
+    agentPlan = await window.FigyAI.requestAIFlowchartPlan(userPrompt, assistantReply);
+  } catch {
+    agentPlan = {};
   }
 
-  const replyAsciiFlowPlan = parseAsciiBoxFlowchart(reply, userPrompt);
-
-  if (replyAsciiFlowPlan.nodes.length) return replyAsciiFlowPlan;
-
-  const replyBracketFlowPlan = parseBracketFlowchart(reply, userPrompt);
-
-  if (replyBracketFlowPlan.nodes.length) return replyBracketFlowPlan;
-
-  const replyMermaidPlan = parseMermaidFlowchart(reply, userPrompt);
-
-  if (replyMermaidPlan.nodes.length) return replyMermaidPlan;
+  if (isUsableFlowchartPlan(agentPlan)) return normalizeChatFlowchartPlan(agentPlan, userPrompt);
 
   const mermaidPlan = parseMermaidFlowchart(assistantReply, userPrompt);
 
@@ -287,7 +246,7 @@ async function generateFlowchartPlan(userPrompt, assistantReply) {
 
   if (fallbackPlan.nodes.length) return fallbackPlan;
 
-  throw new Error("Could not find enough steps for a flowchart.");
+  return createMinimalFlowchartPlan(userPrompt);
 }
 
 function parseFlowchartPlan(reply) {
@@ -720,7 +679,7 @@ function extractJsonObject(text) {
 }
 
 function createFlowchartPlanFromIdeas(userPrompt, assistantReply) {
-  const ideas = extractIdeasFromAIResponse(assistantReply).slice(0, 8);
+  const ideas = getFlowchartFallbackIdeas(assistantReply).slice(0, 12);
   const title = getAIHeading(assistantReply) || cleanIdeaLine(userPrompt).slice(0, 80) || "AI Flowchart";
   const nodes = ideas.map((idea, index) => ({
     id: "step-" + (index + 1),
@@ -736,6 +695,75 @@ function createFlowchartPlanFromIdeas(userPrompt, assistantReply) {
       from: node.id,
       to: nodes[index + 1].id
     }))
+  };
+}
+
+function getFlowchartFallbackIdeas(content) {
+  const extractedIdeas = extractIdeasFromAIResponse(content).map((idea) => ({
+    title: cleanFlowchartFallbackText(idea.title),
+    detail: cleanFlowchartFallbackText(idea.detail || "")
+  }));
+  const lineIdeas = normalizeAssistantText(content)
+    .split(/\r?\n/)
+    .map((line) => cleanFlowchartFallbackText(line))
+    .filter((line) => isUsefulIdea(line) && !isFlowchartFallbackMetaText(line))
+    .map(createIdeaFromText);
+  const candidates = extractedIdeas.length >= 2 ? extractedIdeas : extractedIdeas.concat(lineIdeas);
+  const seen = new Set();
+
+  return candidates.filter((idea) => {
+    if (!idea.title || isFlowchartFallbackMetaText(idea.title)) return false;
+
+    const titleKey = idea.title.toLowerCase();
+    const detailKey = idea.detail.toLowerCase();
+
+    if (seen.has(titleKey)) return false;
+    if (detailKey && seen.has(detailKey) && detailKey === titleKey) return false;
+
+    seen.add(titleKey);
+    if (detailKey) seen.add(detailKey);
+    return true;
+  });
+}
+
+function cleanFlowchartFallbackText(text) {
+  let cleaned = cleanIdeaLine(text)
+    .replace(/^[0-9\uFE0F\u20E3]+\s*/, "")
+    .replace(/^(?:\d+\s*[.)-]\s*)+/, "")
+    .replace(/^[•·]+\s*/, "")
+    .replace(/\s+[•·]+\s+/g, " - ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  while (/^(?:\d+\s*[.)-]\s*|[•·]+\s*)/.test(cleaned)) {
+    cleaned = cleaned.replace(/^(?:\d+\s*[.)-]\s*|[•·]+\s*)/, "").trim();
+  }
+
+  return cleaned;
+}
+
+function isFlowchartFallbackMetaText(text) {
+  return /^(flowchart plan|i found|plus \d+ more|added flowchart|building flowchart|the ai returned|```|json\b)/i.test(text) ||
+    /^(title|nodes|connections|steps|edges)\s*[:{[]/i.test(text);
+}
+
+function createMinimalFlowchartPlan(userPrompt) {
+  const goal = cleanFlowchartFallbackText(userPrompt)
+    .replace(/^(?:please\s+)?(?:make|create|generate|build|draw)\s+(?:me\s+)?(?:a\s+)?(?:flow\s*chart|workflow|process|diagram)\s*(?:for|of|about)?\s*/i, "")
+    .slice(0, 70) || "the requested process";
+  const nodes = [
+    { id: "start", type: "start", label: "Start", detail: "", row: 0, column: 0 },
+    { id: "complete-goal", type: "step", label: "Complete " + goal, detail: "", row: 1, column: 0 },
+    { id: "end", type: "end", label: "End", detail: "", row: 2, column: 0 }
+  ];
+
+  return {
+    title: goal.charAt(0).toUpperCase() + goal.slice(1),
+    nodes,
+    connections: [
+      { from: "start", to: "complete-goal", label: "" },
+      { from: "complete-goal", to: "end", label: "" }
+    ]
   };
 }
 

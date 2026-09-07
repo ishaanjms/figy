@@ -32,12 +32,18 @@ src/
     main.css         App styling
   server/
     chat.js          Gemini and Hugging Face chat logic, with an optional LangChain path
+    flowchart.js     Three-agent flowchart request handler
+    agents/
+      flowchartOrchestrator.js  Runs Intent, Process, and Graph agents in sequence
+      flowchartPrompts.js       Agent roles, prompts, and JSON contracts
+      flowchartState.js         Structured handoffs, normalization, and fallbacks
     env.js           .env loader
     http.js          JSON request/response helpers
     static.js        Static file serving
 
 index.html           Main app page
 api/chat.js          Vercel API route for hosted AI chat
+api/flowchart.js     Vercel API route for agentic flowchart generation
 server.js            Local Node server entry point
 scripts/build-vercel.js  Copies static files into dist for Vercel
 package.json         App scripts and dependencies
@@ -117,7 +123,7 @@ You should see `"hasGeminiKey": true`. If it is `false`, the variable was added 
 
 5. Deploy the project.
 
-On Vercel, the app uses `/api/chat`. The local `server.js` is only for running Figy on your computer.
+On Vercel, the app uses `/api/chat` for conversation and `/api/flowchart` for the three-agent flowchart workflow. The local `server.js` exposes both routes when running Figy on your computer.
 
 The app includes a small AI model selector in the chatbot header. Only the private API key needs to be stored as a Vercel environment variable.
 
@@ -133,7 +139,7 @@ Default AI settings live in `src/server/chat.js`:
 
 ```text
 Default model: gemini-2.5-flash
-Available models: gemini-2.5-flash, gemini-2.0-flash, openai/gpt-oss-120b, Qwen/Qwen3.8-2.4T-A95B
+Available models: gemini-2.5-flash, gemini-2.0-flash, openai/gpt-oss-120b, Qwen/Qwen3.8-2.4T-A95B, deepseek-ai/DeepSeek-V4-Pro
 Max tokens: 1200
 LangChain: optional and off by default
 ```
@@ -151,6 +157,8 @@ This lets AI still work if the page is opened from a local static preview, as lo
 
 Assistant replies in the chat panel show board actions when the response has usable ideas. `Add stickies` creates a clean non-overlapping cluster in the current view, `Add text` places the reply as editable board text, and `Add heading` creates a larger title-style text item.
 
+Flowcharts use three real server-side stages: the Intent Agent defines the goal and scope, the Process Agent creates steps and branches, and the Graph Architect produces board-ready nodes, connections, and layout hints. Each stage receives structured output from the previous stage. Deterministic normalization keeps the workflow usable when a model returns malformed JSON.
+
 ## Validation
 
 Useful quick checks:
@@ -161,6 +169,11 @@ node --check src/js/chat.js
 node --check src/js/aiClient.js
 node --check server.js
 node --check src/server/chat.js
+node --check src/server/flowchart.js
+node --check src/server/agents/flowchartOrchestrator.js
+node --check src/server/agents/flowchartPrompts.js
+node --check src/server/agents/flowchartState.js
 node --check api/chat.js
+node --check api/flowchart.js
 npm run build
 ```

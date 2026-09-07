@@ -2,6 +2,7 @@ const http = require("http");
 const path = require("path");
 const { getChatHealth, handleChatRequest } = require("./src/server/chat");
 const { loadEnv } = require("./src/server/env");
+const { handleFlowchartRequest } = require("./src/server/flowchart");
 const { sendJson } = require("./src/server/http");
 const { serveStaticFile } = require("./src/server/static");
 
@@ -12,13 +13,18 @@ const host = "127.0.0.1";
 
 const server = http.createServer(async (req, res) => {
   try {
-    if (req.method === "OPTIONS" && req.url === "/api/chat") {
+    if (req.method === "OPTIONS" && (req.url === "/api/chat" || req.url === "/api/flowchart")) {
       sendJson(res, 204, {});
       return;
     }
 
     if (req.method === "POST" && req.url === "/api/chat") {
       await handleChatRequest(req, res, env);
+      return;
+    }
+
+    if (req.method === "POST" && req.url === "/api/flowchart") {
+      await handleFlowchartRequest(req, res, env);
       return;
     }
 

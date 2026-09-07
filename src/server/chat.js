@@ -5,6 +5,7 @@ const defaultGeminiModel = "gemini-2.5-flash";
 const allowedModels = new Set([
   defaultHuggingFaceModel,
   "Qwen/Qwen3.8-2.4T-A95B",
+  "deepseek-ai/DeepSeek-V4-Pro",
   defaultGeminiModel,
   "gemini-2.0-flash"
 ]);
@@ -17,6 +18,7 @@ async function handleChatRequest(req, res, env) {
   const model = getRequestedModel(body.model, env);
   const provider = getProvider(model, env);
   const maxTokens = getMaxTokens(env, body.maxTokens);
+  const responseFormat = body.responseFormat === "json" ? "json" : "text";
   const apiKey = getProviderApiKey(provider, env);
 
   if (!apiKey) {
@@ -26,8 +28,28 @@ async function handleChatRequest(req, res, env) {
     return;
   }
 
-  const reply = await runChat(messages, env, model, provider, maxTokens);
+  const reply = await runChat(messages, env, model, provider, maxTokens, responseFormat);
   sendJson(res, 200, { reply });
+}
+
+async function requestStructuredReply(prompt, env, options = {}) {
+  const model = getRequestedModel(options.model, env);
+  const provider = getProvider(model, env);
+  const maxTokens = getMaxTokens(env, options.maxTokens);
+  const apiKey = getProviderApiKey(provider, env);
+
+  if (!apiKey) {
+    throw new Error("Add an API key for the selected AI model, then restart locally or redeploy on Vercel.");
+  }
+
+  return runChat(
+    [{ role: "user", content: String(prompt || "").trim() }],
+    env,
+    model,
+    provider,
+    maxTokens,
+    "json"
+  );
 }
 
 function getChatHealth(env) {
@@ -43,9 +65,9 @@ function getChatHealth(env) {
   };
 }
 
-async function runChat(messages, env, model, provider, maxTokens) {
+async function runChat(messages, env, model, provider, maxTokens, responseFormat = "text") {
   if (provider === "gemini") {
-    return runGeminiChat(messages, env, getGeminiModel(env, model), maxTokens);
+    return runGeminiChat(messages, env, getGeminiModel(env, model), maxTokens, responseFormat);
   }
 
   if (env.USE_LANGCHAIN === "true") {
@@ -61,14 +83,14 @@ async function runChat(messages, env, model, provider, maxTokens) {
   } catch (error) {
     if (getGeminiApiKey(env)) {
       console.warn("Hugging Face unavailable, falling back to Gemini:", error.message);
-      return runGeminiChat(messages, env, getGeminiModel(env), maxTokens);
+      return runGeminiChat(messages, env, getGeminiModel(env), maxTokens, responseFormat);
     }
 
     throw error;
   }
 }
 
-async function runGeminiChat(messages, env, model, maxTokens) {
+async function runGeminiChat(messages, env, model, maxTokens, responseFormat = "text") {
   const apiKey = getGeminiApiKey(env);
   const response = await fetch("https://generativelanguage.googleapis.com/v1beta/models/" + model + ":generateContent", {
     method: "POST",
@@ -83,7 +105,8 @@ async function runGeminiChat(messages, env, model, maxTokens) {
       contents: normalizeGeminiMessages(messages),
       generationConfig: {
         temperature: 0.7,
-        maxOutputTokens: maxTokens
+        maxOutputTokens: maxTokens,
+        ...(responseFormat === "json" ? { responseMimeType: "application/json" } : {})
       }
     })
   });
@@ -125,7 +148,7 @@ async function runHuggingFaceChat(messages, env, model, maxTokens) {
   const normalizedMessages = normalizeChatMessages(messages, env);
 
   if (usesHuggingFaceRouter(model, env)) {
-    return runHuggingFaceRouterChat(normalizedMessages, env, maxTokens);
+    return runHuggingFaceRouterChat(normalizedMessages, env, model, maxTokens);
   }
 
   const response = await fetch("https://api-inference.huggingface.co/models/" + model, {
@@ -160,8 +183,7 @@ async function runHuggingFaceChat(messages, env, model, maxTokens) {
   return "I did not get a readable reply from Hugging Face.";
 }
 
-async function runHuggingFaceRouterChat(messages, env, maxTokens) {
-  const model = getHuggingFaceModel(env);
+async function runHuggingFaceRouterChat(messages, env, model, maxTokens) {
   const response = await fetch("https://router.huggingface.co/v1/chat/completions", {
     method: "POST",
     headers: {
@@ -195,7 +217,9 @@ function usesHuggingFaceRouter(model, env) {
   if (env.HUGGINGFACE_API_MODE === "router") return true;
   if (env.HUGGINGFACE_API_MODE === "legacy") return false;
 
-  return model.startsWith("openai/gpt-oss") || model.startsWith("Qwen/");
+  return model.startsWith("openai/gpt-oss")
+    || model.startsWith("Qwen/")
+    || model.startsWith("deepseek-ai/");
 }
 
 function normalizeChatMessages(messages, env) {
@@ -320,7 +344,7 @@ function cleanReply(reply) {
 function getMaxTokens(env, requestedMaxTokens) {
   const maxTokens = Number(requestedMaxTokens || env.CHAT_MAX_TOKENS);
 
-  return Number.isFinite(maxTokens) ? Math.max(80, Math.min(2400, maxTokens)) : defaultMaxTokens;
+  return Number.isFinite(maxTokens) ? Math.max(80, Math.min(4000, maxTokens)) : defaultMaxTokens;
 }
 
 function removeDanglingMarkdown(reply) {
@@ -338,5 +362,6 @@ function removeDanglingMarkdown(reply) {
 
 module.exports = {
   handleChatRequest,
-  getChatHealth
+  getChatHealth,
+  requestStructuredReply
 };

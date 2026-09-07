@@ -11,6 +11,7 @@ Figy is a local FigJam-style whiteboard. Preserve the direct, usable canvas expe
 ```text
 index.html
 api/chat.js
+api/flowchart.js
 server.js
 package.json
 vercel.json
@@ -33,6 +34,15 @@ src/styles/
 src/server/
   chat.js
     Gemini route, Hugging Face router, legacy Hugging Face endpoint, optional LangChain path.
+  flowchart.js
+    Three-agent flowchart endpoint handler.
+  agents/
+    flowchartOrchestrator.js
+      Runs the Intent, Process, and Graph Architect stages sequentially.
+    flowchartPrompts.js
+      Agent prompts and structured JSON contracts.
+    flowchartState.js
+      Parses and normalizes handoffs and provides deterministic fallbacks.
   env.js
     Minimal .env parser.
   http.js
@@ -85,8 +95,9 @@ This project is now Vercel-ready.
 
 - Vercel builds static output into `dist/` using `scripts/build-vercel.js`.
 - `vercel.json` sets `outputDirectory` to `dist`.
-- Hosted AI calls use `api/chat.js`.
+- Hosted AI calls use `api/chat.js` and `api/flowchart.js`.
 - `api/chat.js` reuses `src/server/chat.js`.
+- `api/flowchart.js` reuses the server-side three-agent flowchart orchestrator.
 - Vercel env vars are read from `process.env`.
 - Local `.env` is only for `server.js` on the user's machine.
 
@@ -111,10 +122,15 @@ node --check src/js/chat.js
 node --check src/js/aiClient.js
 node --check server.js
 node --check src/server/chat.js
+node --check src/server/flowchart.js
+node --check src/server/agents/flowchartOrchestrator.js
+node --check src/server/agents/flowchartPrompts.js
+node --check src/server/agents/flowchartState.js
 node --check src/server/env.js
 node --check src/server/http.js
 node --check src/server/static.js
 node --check api/chat.js
+node --check api/flowchart.js
 ```
 
 ## AI Setup
@@ -130,11 +146,11 @@ HUGGINGFACE_API_KEY=
 
 `GOOGLE_API_KEY` and `GOOGLE_GENERATIVE_AI_API_KEY` are also accepted as Gemini key aliases.
 
-The browser calls AI through `window.FigyAI.requestAIReply()` from `src/js/aiClient.js`.
+The browser calls chat through `window.FigyAI.requestAIReply()` and the flowchart orchestrator through `window.FigyAI.requestAIFlowchartPlan()` from `src/js/aiClient.js`.
 
-In production, `src/js/aiClient.js` only calls `/api/chat`. On local static previews, it can also fall back to `http://127.0.0.1:4317/api/chat`.
+In production, `src/js/aiClient.js` calls `/api/chat` and `/api/flowchart`. On local static previews, it can fall back to the matching routes on `http://127.0.0.1:4317`.
 
-`src/server/chat.js` uses Gemini by default when `GEMINI_API_KEY` is present. It also supports the Hugging Face OpenAI-compatible router for `openai/gpt-oss-*` and `Qwen/*` models, and falls back to the legacy Hugging Face inference endpoint for other Hugging Face models unless `HUGGINGFACE_API_MODE` is set.
+`src/server/chat.js` uses Gemini by default when `GEMINI_API_KEY` is present. It also supports the Hugging Face OpenAI-compatible router for `openai/gpt-oss-*`, `Qwen/*`, and `deepseek-ai/*` models, and falls back to the legacy Hugging Face inference endpoint for other Hugging Face models unless `HUGGINGFACE_API_MODE` is set.
 
 The server must remain bound to `127.0.0.1` by default. Do not expose `.env`, dotfiles, or `node_modules`.
 
