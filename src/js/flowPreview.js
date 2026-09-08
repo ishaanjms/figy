@@ -3,7 +3,7 @@
   const drawing = document.getElementById("previewDrawing");
   const error = document.getElementById("previewError");
   const assumptions = document.getElementById("previewAssumptions");
-  let current, prompt, replacement, revision = 0;
+  let current, prompt, revision = 0;
   let previewScale=1;
   function zoomPreview(scale) {
     if(!current)return;
@@ -39,17 +39,16 @@
     fitPreview();
   }
   function busy(value) {dialog.querySelectorAll('footer button').forEach(b=>b.disabled=value);}
-  async function show(plan, sourcePrompt='', replace=null) {
-    replacement=replace;
+  async function show(plan, sourcePrompt='') {
     prompt=sourcePrompt;error.textContent='Arranging flow...';busy(true);if(!dialog.open)dialog.showModal();
     const token=++revision;
-    try {const prepared=await FigyLayout.arrange(plan);if(token!==revision)return;current=prepared;assumptions.value=(plan.assumptions||[]).join('\n');draw(prepared);error.textContent='';document.getElementById('insertFlow').textContent=replacement?'Apply to selection':'Insert flow';}
+    try {const prepared=await FigyLayout.arrange(plan);if(token!==revision)return;current=prepared;assumptions.value=(plan.assumptions||[]).join('\n');draw(prepared);error.textContent='';document.getElementById('insertFlow').textContent='Insert flow';}
     catch(e){current=null;error.textContent=e.message;}
     finally{if(token===revision){busy(false);document.getElementById('insertFlow').disabled=!current;}}
   }
   async function revise(instruction) {
     busy(true);error.textContent='Updating flow...';
-    try{const request=prompt+'\n'+instruction+'\nAssumptions:\n'+assumptions.value;const plan=replacement?await FigyWorkspace.revisionPlan(request,current):await FigyAI.requestAIFlowchartPlan(request,JSON.stringify({nodes:current.nodes,connections:current.connections}));await show(plan,prompt,replacement);}
+    try{const request=prompt+'\n'+instruction+'\nAssumptions:\n'+assumptions.value;const plan=await FigyAI.requestAIFlowchartPlan(request,JSON.stringify({nodes:current.nodes,connections:current.connections}));await show(plan,prompt);}
     catch(e){error.textContent=e.message;busy(false);}
   }
   document.getElementById('simplifyFlow').onclick=()=>revise('Simplify this flow while retaining meaningful decisions.');
@@ -59,6 +58,6 @@
   document.getElementById('expandFlow').onclick=()=>revise('Add the most important exception and recovery paths.');
   document.getElementById('reviseFlow').onclick=()=>revise('Revise the flow to respect the edited assumptions.');
   document.getElementById('closePreview').onclick=()=>{revision++;dialog.close();};
-  document.getElementById('insertFlow').onclick=async()=>{if(!current)return;busy(true);try{await FigyBoard.addAIFlowchart(current,replacement);dialog.close();}catch(e){error.textContent=e.message;}finally{busy(false);}};
+  document.getElementById('insertFlow').onclick=async()=>{if(!current)return;busy(true);try{await FigyBoard.addAIFlowchart(current);dialog.close();}catch(e){error.textContent=e.message;}finally{busy(false);}};
   window.FigyPreview={show};
 })();

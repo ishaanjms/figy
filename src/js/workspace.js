@@ -127,35 +127,35 @@
     }).join("");
     download('<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>'+esc(fileName.value)+'</title><style>body{margin:24px;font-family:Arial;background:#f7f7f7}svg{width:100%;height:auto}h1{font-size:22px}</style><h1>'+esc(fileName.value)+'</h1><svg xmlns="http://www.w3.org/2000/svg" viewBox="'+[left,top,width,height].join(' ')+'"><defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L10 5L0 10" fill="#707070"/></marker></defs>'+lines+content+labels+'</svg>',fileName.value+'-review.html','text/html');
   }
-  async function revisionPlan(instruction, plan) {
-    const reply=await FigyAI.requestAIReply([{role:'user',content:'Revise this selected flow. Return only JSON with title, nodes [{id,type,label,detail}], connections [{from,to,label}]. Keep ALL existing node IDs. You may add steps with new IDs. Preserve unchanged labels and connections. Apply only the requested change. Decisions need labeled choices. Request: '+instruction+'\nCurrent flow: '+JSON.stringify(plan)}],{responseFormat:'json',maxTokens:3200,includeSelection:false});
-    const clean=reply.trim().replace(/^```(?:json)?\s*/i,'').replace(/\s*```$/,'');
-    let result;
-    try{result=JSON.parse(clean);}catch{throw new Error('The revision was incomplete. Please retry.');}
-    FigyGraph.validate(result);
-    if(plan.nodes.some(n=>!result.nodes.some(m=>m.id===n.id)))throw new Error('The revision removed an existing step. Please retry.');
-    return result;
-  }
-  window.FigyWorkspace={save,flush,fit,selectionContext,validateFile,revisionPlan};
+  window.FigyWorkspace={save,flush,fit,selectionContext,validateFile};
   document.getElementById('connectSelected').onclick=()=>{const chosen=selected().filter(e=>e.classList.contains('connectable'));if(chosen.length!==2){status.textContent='Select two objects to connect';return;}const sides=getFlowchartConnectionSides(chosen[0],chosen[1]);createConnectorLine(chosen[0].dataset.elementId,sides.from,chosen[1].dataset.elementId,sides.to);saveHistory();};
-  document.getElementById('refineSelected').onclick=()=>{if(!selected().some(e=>e.classList.contains('connectable'))){status.textContent='Select a flow to refine';return;}document.getElementById('refineDialog').showModal();};
-  document.getElementById('cancelRefine').onclick=()=>document.getElementById('refineDialog').close();
-  document.getElementById('refineForm').onsubmit=async e=>{
-    e.preventDefault();const error=document.getElementById('refineError'),submit=e.target.querySelector('[type=submit]');submit.disabled=true;error.textContent='Preparing revision...';
-    const chosen=selected().filter(e=>e.classList.contains('connectable')),ids=chosen.map(e=>e.dataset.elementId);
-    const context={title:'Selected flow',nodes:chosen.map(el=>({id:el.dataset.elementId,type:el.dataset.shape==='diamond'?'decision':'step',label:getEditableArea(el).innerText})),connections:serializeBoard().connectors.filter(c=>ids.includes(c.fromId)&&ids.includes(c.toId)).map(c=>({from:c.fromId,to:c.toId,label:c.label}))};
-    const replacement={ids,snapshot:JSON.stringify(serializeBoard())};
-    const instruction=document.getElementById('refineInstruction').value;
-    try{const plan=await revisionPlan(instruction,context);document.getElementById('refineDialog').close();await FigyPreview.show(plan,instruction,replacement);error.textContent='';}catch(err){error.textContent=err.message;}finally{submit.disabled=false;}
-  };
   document.getElementById("reviewBoard").onclick=reviewPage;
   document.getElementById("fitBoard").onclick=()=>fit();
   document.getElementById("undoBoard").onclick=undoBoardChange;
   document.getElementById("redoBoard").onclick=redoBoardChange;
-  document.getElementById("alignBoard").onclick=()=>{const chosen=selected();if(chosen.length<2)return;const left=Math.min(...chosen.map(e=>e.offsetLeft));chosen.forEach(e=>e.style.left=left+'px');updateConnectorPositions();saveHistory();};
+  const alignButton = document.getElementById("alignBoard");
+  const alignMenu = document.getElementById("alignMenu");
+  function closeAlignMenu() { alignMenu.hidden = true; alignButton.setAttribute("aria-expanded", "false"); }
+  function alignSelection(mode) {
+    const chosen = selected();
+    if (chosen.length < 2) { status.textContent = "Select two or more objects to align"; return; }
+    const left = Math.min(...chosen.map(e => e.offsetLeft));
+    const right = Math.max(...chosen.map(e => e.offsetLeft + e.offsetWidth));
+    const center = left + (right - left) / 2;
+    chosen.forEach(e => {
+      const target = mode === "right" ? right - e.offsetWidth : mode === "center" ? center - e.offsetWidth / 2 : left;
+      e.style.left = Math.round(target) + "px";
+    });
+    updateConnectorPositions();
+    saveHistory();
+  }
+  alignButton.onclick=()=>{alignMenu.hidden=!alignMenu.hidden;alignButton.setAttribute("aria-expanded", String(!alignMenu.hidden));};
+  alignMenu.querySelectorAll("[data-align]").forEach(button=>button.onclick=()=>{alignSelection(button.dataset.align);closeAlignMenu();});
   document.getElementById("boardSearch").oninput=e=>{const q=e.target.value.trim().toLowerCase();const hits=items().filter(el=>q && (getEditableArea(el)?.innerText||'').toLowerCase().includes(q));selectElements(hits);if(hits.length)fit(hits);};
+  document.addEventListener("pointerdown", e=>{if(!alignMenu.hidden && !alignMenu.contains(e.target) && !alignButton.contains(e.target))closeAlignMenu();});
   document.addEventListener('keydown',e=>{
     if(isEditableTarget(e.target))return;
+    if(e.key==='Escape')closeAlignMenu();
     if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==='a'){e.preventDefault();selectElements(items());return;}
     if(e.key==='Escape'){clearSelection();return;}
     if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==='c'&&selected().length){e.preventDefault();e.stopImmediatePropagation();copyGroup();}

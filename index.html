@@ -23,9 +23,15 @@
     <button id="undoBoard" title="Undo" aria-label="Undo"><i data-lucide="undo-2"></i></button>
     <button id="redoBoard" title="Redo" aria-label="Redo"><i data-lucide="redo-2"></i></button>
     <button id="fitBoard" title="Fit selection or board" aria-label="Fit selection or board"><i data-lucide="scan"></i></button>
-    <button id="alignBoard" title="Align selected objects left" aria-label="Align selected objects left"><i data-lucide="align-start-vertical"></i></button>
+    <div class="action-menu">
+      <button id="alignBoard" title="Align selected objects" aria-label="Align selected objects" aria-expanded="false" aria-controls="alignMenu"><i data-lucide="align-start-vertical"></i></button>
+      <div id="alignMenu" class="workspace-menu" role="menu" aria-label="Alignment options" hidden>
+        <button type="button" data-align="left" title="Align left" aria-label="Align left" role="menuitem"><i data-lucide="align-start-vertical"></i></button>
+        <button type="button" data-align="center" title="Align center" aria-label="Align center" role="menuitem"><i data-lucide="align-center-vertical"></i></button>
+        <button type="button" data-align="right" title="Align right" aria-label="Align right" role="menuitem"><i data-lucide="align-end-vertical"></i></button>
+      </div>
+    </div>
     <button id="connectSelected" title="Connect two selected objects" aria-label="Connect two selected objects"><i data-lucide="move-right"></i></button>
-    <button id="refineSelected" title="Refine selected flow" aria-label="Refine selected flow"><i data-lucide="sparkles"></i></button>
     <button id="reviewBoard" title="Download review page" aria-label="Download review page"><i data-lucide="share-2"></i></button>
   </div>
 
@@ -186,7 +192,6 @@
     <label for="previewAssumptions">Assumptions</label><textarea id="previewAssumptions" rows="2"></textarea>
     <footer><button id="simplifyFlow">Simplify</button><button id="expandFlow">Add exception paths</button><button id="reviseFlow">Apply assumptions</button><button id="insertFlow">Insert flow</button></footer>
   </dialog>
-  <dialog id="refineDialog" aria-labelledby="refineTitle"><form id="refineForm"><h2 id="refineTitle">Refine selection</h2><textarea id="refineInstruction" aria-label="Requested changes" placeholder="Add a recovery path when verification fails" required rows="3"></textarea><div id="refineError" role="status"></div><footer><button type="button" id="cancelRefine">Cancel</button><button type="submit">Preview changes</button></footer></form></dialog>
   <script src="assets/vendor/elk.bundled.js"></script>
   <script src="assets/vendor/lucide.js"></script>
   <script src="src/shared/graph.js"></script>

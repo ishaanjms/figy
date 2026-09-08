@@ -6,16 +6,14 @@
 #workspaceActions button, #flowPreview header button { display:grid;place-items:center;width:32px;height:32px;padding:6px;border:0;border-radius:5px;background:transparent;color:var(--text);cursor:pointer; }
 #workspaceActions svg, #flowPreview header svg { width:18px;height:18px; }
 #workspaceActions button:hover { background:var(--surface-hover); }
+.action-menu { position:relative;display:grid;place-items:center; }
+.workspace-menu { position:absolute;top:calc(100% + 8px);right:0;z-index:130;display:flex;gap:4px;padding:6px;border:1px solid var(--border);border-radius:8px;background:var(--surface);box-shadow:var(--shadow-popover); }
+.workspace-menu[hidden] { display:none; }
 #workspaceActions input[type=search] { width:135px;border:0;border-left:1px solid var(--border);background:transparent;color:var(--text);padding:8px;font:inherit;font-size:12px; }
 #saveStatus { font-size:11px;color:var(--muted-text);max-width:130px;padding:0 8px; }
 .edge-label { fill:var(--text);font:16px Arial;paint-order:stroke;stroke:var(--board-bg);stroke-width:6px;pointer-events:none; }
 #flowPreview { width:min(920px,calc(100vw - 32px));max-height:calc(100vh - 40px);padding:16px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text); }
 #flowPreview::backdrop { background:rgba(0,0,0,.3); }
-#refineDialog { width:min(440px,calc(100vw - 32px));border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);padding:20px; }
-#refineDialog h2 { margin:0 0 16px;font-size:18px; }
-#refineDialog textarea { width:100%;padding:10px;border:1px solid var(--border);background:var(--board-bg);color:var(--text);font:inherit;resize:vertical; }
-#refineDialog footer { display:flex;justify-content:flex-end;gap:8px;margin-top:12px; }
-#refineDialog button { padding:8px 12px;border:1px solid var(--border);border-radius:5px;background:var(--surface-hover);color:var(--text);cursor:pointer; }
 .selection-context { flex:0 0 100%;font-size:11px;color:var(--muted-text);display:flex;gap:6px;align-items:center; }
 .chat-form { flex-wrap:wrap; }
 #flowPreview header { display:flex;align-items:center;justify-content:space-between; }

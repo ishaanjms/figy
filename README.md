@@ -4,7 +4,6 @@
 
 - The board and chat save locally and reopen on refresh. Local saving is device/browser specific, not cloud sync. Group/Ungroup, board-file export/import, and manual recovery controls have been removed from the toolbar.
 - AI flow requests open a visual preview with zoom, editable assumptions, Simplify, and Add exception paths. Insert is explicit and undoable.
-- Select a flow and use the sparkle button to request a revision. Existing IDs and positions are preserved, external connections remain attached, and changes require an explicit Apply. If the board changes while a revision is open, regenerate the preview.
 - Generated diagrams use ELK layout with separate ports for each connection. There is no four-connection cap and no silently dropped branch. Manual connections remain unrestricted.
 - Connector labels belong to edges, follow movement, and disappear with the edge. Their text and routing survive saving and undo.
 - Board actions include search, fit selection/board, alignment, copying multiple selected objects with their internal connections, click-to-connect for two selected objects, and downloadable HTML review pages. Arrow keys move selected objects; Shift moves by 10 pixels. Focus an object and use Shift+Enter to extend selection without dragging.
