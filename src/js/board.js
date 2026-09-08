@@ -173,7 +173,7 @@ function setupConnectorToolbar() {
 
 function updateFileNameWidth() {
   const titleLength = Math.max(defaultFileName.length, fileName.value.length);
-  fileName.style.width = Math.min(maxVisibleFileNameLength, titleLength + 1) + "ch";
+  fileName.style.width = "calc(" + Math.min(maxVisibleFileNameLength, titleLength + 1) + "ch + 24px)";
 }
 
 function setFileName(nextName) {
@@ -373,7 +373,8 @@ function serializeBoard() {
       x: element.offsetLeft,
       y: element.offsetTop,
       width: element.offsetWidth,
-      height: element.offsetHeight
+      height: element.offsetHeight,
+      groupId: element.dataset.groupId || ""
     };
 
     if (element.classList.contains("sticky")) {
@@ -405,7 +406,7 @@ function serializeBoard() {
         type: "stroke",
         points: element.dataset.points,
         color: element.dataset.strokeColor || "#1f1f1f",
-        width: Number(element.dataset.strokeWidth) || 4
+        strokeWidth: Number(element.dataset.strokeWidth) || 4
       };
     }
 
@@ -414,6 +415,7 @@ function serializeBoard() {
         type: "shape",
         id: element.dataset.elementId,
         shape: element.dataset.shape,
+        flowNodeId: element.dataset.flowNodeId || "",
         color: element.dataset.color || "white",
         label: element.querySelector(".shape-label")?.innerText || ""
       };
@@ -425,13 +427,18 @@ function serializeBoard() {
     width: Number(stroke.getAttribute("stroke-width")) || selectedPencilWidth
   }));
 
-  const connectors = [...drawLayer.querySelectorAll(".connector-line")].map((connector) => ({
+  const connectors = [...drawLayer.querySelectorAll(".connector-line:not(.connector-line-draft)")].map((connector) => ({
     fromId: connector.dataset.fromId,
     fromSide: connector.dataset.fromSide,
     toId: connector.dataset.toId,
     toSide: connector.dataset.toSide,
     color: connector.dataset.color || defaultConnectorColor,
-    width: Number(connector.dataset.width) || defaultConnectorWidth
+    width: Number(connector.dataset.width) || defaultConnectorWidth,
+    label: connector.dataset.label || "",
+    fromPort: connector.dataset.fromPort ? JSON.parse(connector.dataset.fromPort) : null,
+    toPort: connector.dataset.toPort ? JSON.parse(connector.dataset.toPort) : null,
+    route: connector.dataset.route ? JSON.parse(connector.dataset.route) : null,
+    routeBounds: connector.dataset.routeBounds || ""
   }));
 
   return { items, strokes, connectors };
@@ -483,6 +490,7 @@ function restoreBoard(snapshot) {
       element.dataset.elementId = item.id || getNextElementId();
       setShapeColor(element, item.color || "white", false);
       setShapeLabel(element, item.label || "");
+      if (item.flowNodeId) { element.dataset.flowNodeId=item.flowNodeId; setFlowShapeGeometry(element); }
     }
 
     if (item.type === "stroke") {
@@ -490,6 +498,7 @@ function restoreBoard(snapshot) {
     }
 
     if (element) {
+      if (item.groupId) element.dataset.groupId = item.groupId;
       element.style.width = item.width + "px";
       element.style.height = item.height + "px";
     }
@@ -498,7 +507,12 @@ function restoreBoard(snapshot) {
   (snapshot.connectors || []).forEach((connectorData) => {
     createConnectorLine(connectorData.fromId, connectorData.fromSide, connectorData.toId, connectorData.toSide, {
       color: connectorData.color,
-      width: connectorData.width
+      width: connectorData.width,
+      label: connectorData.label,
+      fromPort: connectorData.fromPort,
+      toPort: connectorData.toPort,
+      route: connectorData.route,
+      routeBounds: connectorData.routeBounds
     });
   });
   updateConnectorPositions();
@@ -525,6 +539,7 @@ function saveHistory() {
   historyStack.push(snapshot);
   if (historyStack.length > 80) historyStack.shift();
   redoStack = [];
+  window.FigyWorkspace?.save();
 }
 
 function undoBoardChange() {
@@ -532,6 +547,7 @@ function undoBoardChange() {
 
   redoStack.push(historyStack.pop());
   restoreBoard(JSON.parse(historyStack[historyStack.length - 1]));
+  window.FigyWorkspace?.save();
 }
 
 function redoBoardChange() {
@@ -540,9 +556,14 @@ function redoBoardChange() {
 
   historyStack.push(snapshot);
   restoreBoard(JSON.parse(snapshot));
+  window.FigyWorkspace?.save();
 }
 
 function selectElement(element) {
+  if (element.dataset.groupId) {
+    selectElements([...canvas.children].filter(el => el.dataset.groupId === element.dataset.groupId));
+    return;
+  }
   if (selectedElements.size !== 1 || !selectedElements.has(element)) {
     clearSelection();
   }
@@ -680,7 +701,7 @@ async function writeStickyWithAI(sticky, prompt, aiSubmitButton) {
           "User request: " + prompt
         ].join("\n")
       }
-    ]);
+    ], { includeSelection: false });
 
     stickyContent.innerText = cleanStickyAiText(reply);
     setStickyAiOpen(sticky, false);
@@ -1009,6 +1030,31 @@ function getDistanceToRect(point, rect) {
   return getDistance(point, { x: closestX, y: closestY });
 }
 
+function isConnectorAnchorOccupied(elementId, side, ignoredLine = null) {
+  if (!elementId || !side) return false;
+
+  return [...drawLayer.querySelectorAll(".connector-line:not(.connector-line-draft)")].some((line) => (
+    line !== ignoredLine && (
+      (line.dataset.fromId === elementId && line.dataset.fromSide === side) ||
+      (line.dataset.toId === elementId && line.dataset.toSide === side)
+    )
+  ));
+}
+
+function getAvailableConnectorSide(element, preferredSide, ignoredLine = null) {
+  if (!element?.dataset.elementId) return null;
+
+  const alternatives = {
+    n: ["n", "e", "w", "s"],
+    e: ["e", "s", "n", "w"],
+    s: ["s", "w", "e", "n"],
+    w: ["w", "n", "s", "e"]
+  };
+
+  return (alternatives[preferredSide] || ["n", "e", "s", "w"])
+    .find((side) => !isConnectorAnchorOccupied(element.dataset.elementId, side, ignoredLine)) || null;
+}
+
 function getNearestConnectorSide(element, point) {
   const rect = getConnectableRect(element);
   const isInside = (
@@ -1047,9 +1093,11 @@ function findConnectorSnapTarget(point, sourceElement) {
 
     if (distance > snapDistance || distance >= nearest.distance) return nearest;
 
+    const side = getNearestConnectorSide(element, point);
+
     return {
       element,
-      side: getNearestConnectorSide(element, point),
+      side,
       distance
     };
   }, { element: null, side: null, distance: Infinity });
@@ -1146,19 +1194,40 @@ function getConnectorTangent(side) {
   return { x: -1, y: 0 };
 }
 
+function connectorBounds(from, to) {
+  return [from.offsetLeft, from.offsetTop, from.offsetWidth, from.offsetHeight, to.offsetLeft, to.offsetTop, to.offsetWidth, to.offsetHeight].join(",");
+}
+
+function connectorEndpoint(element, side, port) {
+  if (!port) return getConnectorPoint(element, side);
+  const p = JSON.parse(port);
+  return { x: element.offsetLeft + element.offsetWidth * p.x, y: element.offsetTop + element.offsetHeight * p.y };
+}
+
+function removeConnector(line) {
+  line._labelElement?.remove();
+  line.remove();
+}
+
 function updateConnectorLine(line) {
   const fromElement = getConnectableById(line.dataset.fromId);
   const toElement = getConnectableById(line.dataset.toId);
 
   if (!fromElement || !toElement) {
-    line.remove();
+    removeConnector(line);
     return;
   }
 
-  const fromPoint = getConnectorPoint(fromElement, line.dataset.fromSide);
-  const toPoint = getConnectorPoint(toElement, line.dataset.toSide);
+  const fromPoint = connectorEndpoint(fromElement, line.dataset.fromSide, line.dataset.fromPort);
+  const toPoint = connectorEndpoint(toElement, line.dataset.toSide, line.dataset.toPort);
 
-  line.setAttribute("d", getConnectorPath(fromPoint, toPoint, line.dataset.fromSide, line.dataset.toSide));
+  const route = line.dataset.route && line.dataset.routeBounds === connectorBounds(fromElement, toElement) ? JSON.parse(line.dataset.route) : null;
+  line.setAttribute("d", route ? route.map((p, i) => (i ? "L " : "M ") + p.x + " " + p.y).join(" ") : getConnectorPath(fromPoint, toPoint, line.dataset.fromSide, line.dataset.toSide));
+  if (line._labelElement) {
+    const midpoint = getConnectorMidpoint(line);
+    line._labelElement.setAttribute("x", midpoint.x);
+    line._labelElement.setAttribute("y", midpoint.y - 8);
+  }
 }
 
 function updateConnectorPositions() {
@@ -1171,18 +1240,27 @@ function removeConnectorsForElement(element) {
 
   drawLayer.querySelectorAll(".connector-line").forEach((line) => {
     if (line.dataset.fromId === element.dataset.elementId || line.dataset.toId === element.dataset.elementId) {
-      line.remove();
+      removeConnector(line);
     }
   });
 }
 
 function createConnectorLine(fromId, fromSide, toId, toSide, options = {}) {
+  if (
+    !fromId || !toId || fromId === toId
+  ) {
+    return null;
+  }
+
   const line = createConnectorPathElement(false);
 
   line.dataset.fromId = fromId;
   line.dataset.fromSide = fromSide;
   line.dataset.toId = toId;
   line.dataset.toSide = toSide;
+  for (const key of ["fromPort", "toPort", "route"]) if (options[key]) line.dataset[key] = JSON.stringify(options[key]);
+  line.dataset.routeBounds = options.routeBounds || "";
+  line.dataset.label = options.label || "";
   setConnectorStyle(line, options.color || defaultConnectorColor, options.width || defaultConnectorWidth, false);
   line.addEventListener("click", (e) => {
     if (activeTool !== "select") return;
@@ -1191,6 +1269,14 @@ function createConnectorLine(fromId, fromSide, toId, toSide, options = {}) {
     selectElement(line);
   });
   drawLayer.appendChild(line);
+  if (line.dataset.label) {
+    const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
+    label.classList.add("edge-label");
+    label.textContent = line.dataset.label;
+    label.setAttribute("text-anchor", "middle");
+    drawLayer.appendChild(label);
+    line._labelElement = label;
+  }
   updateConnectorLine(line);
 
   return line;
@@ -1258,13 +1344,13 @@ function finishConnectorDrag(e) {
   activeConnector.line.remove();
 
   if (snapTarget.element && snapTarget.element !== activeConnector.fromElement) {
-    createConnectorLine(
+    const line = createConnectorLine(
       activeConnector.fromElement.dataset.elementId,
       activeConnector.fromSide,
       snapTarget.element.dataset.elementId,
       snapTarget.side
     );
-    saveHistory();
+    if (line) saveHistory();
   }
 
   clearConnectorSnapTarget();
@@ -1692,101 +1778,79 @@ function addAIText(text, options = {}) {
   saveHistory();
 }
 
-function addAIFlowchart(plan) {
-  const flowchart = normalizeFlowchartPlan(plan);
+function setFlowShapeGeometry(element) {
+  const geometry = {
+    circle: '<ellipse cx="60" cy="60" rx="60" ry="60"></ellipse>',
+    diamond: '<polygon points="60,0 120,60 60,120 0,60"></polygon>',
+    square: '<rect x="0" y="0" width="120" height="120" rx="2"></rect>'
+  };
+  const svg=element.querySelector("svg");
+  if(svg && geometry[element.dataset.shape]) svg.innerHTML=geometry[element.dataset.shape];
+}
 
-  if (!flowchart.nodes.length) return;
-
+async function addAIFlowchart(plan, replacement = null) {
+  const prepared = plan.layout ? plan : await FigyLayout.arrange(plan);
+  FigyGraph.validate(prepared);
+  if (replacement && JSON.stringify(serializeBoard()) !== replacement.snapshot) throw new Error("The board changed while the preview was open. Preview the revision again.");
+  if (replacement && replacement.ids.some(id => !prepared.nodes.some(n => n.id === id))) throw new Error("The revision removed an existing step. Keep its ID and retry.");
   const center = getVisibleBoardCenter();
-  const isLargeFlowchart = flowchart.nodes.length > 22;
-  const nodeWidth = isLargeFlowchart ? 230 : 260;
-  const nodeHeight = isLargeFlowchart ? 92 : 108;
-  const detailWidth = 260;
-  const detailGap = 18;
-  const horizontalGap = isLargeFlowchart ? 130 : 100;
-  const verticalGap = isLargeFlowchart ? 96 : 118;
-  const placements = getFlowchartPlacements(flowchart.nodes, flowchart.connections);
-  const rows = [...new Set(placements.map((placement) => placement.row))];
-  const columns = [...new Set(placements.map((placement) => placement.column))];
-  const minColumn = Math.min(...columns);
-  const maxColumn = Math.max(...columns);
-  const layoutWidth = (maxColumn - minColumn + 1) * nodeWidth + (maxColumn - minColumn) * horizontalGap;
-  const startX = center.x - layoutWidth / 2;
-  const startY = center.y - rows.length * (nodeHeight + verticalGap) / 2;
-  const createdElements = [];
-  const nodeElements = new Map();
-
+  const existing = [...canvas.children].filter(e => e !== drawLayer);
+  const right = existing.length ? Math.max(...existing.map(e => e.offsetLeft + e.offsetWidth)) + 100 : center.x - prepared.layout.width / 2;
+  const top = center.y - Math.min(prepared.layout.height / 2, 240);
+  const elements = [];
+  const mapped = new Map();
+  const previous = serializeBoard();
   isSkippingHistory = true;
-
-  if (flowchart.title) {
-    const heading = createText(center.x - 260, startY - 96, flowchart.title);
-
-    setTextSize(heading, 28, false);
-    heading.style.fontWeight = "700";
-    heading.style.maxWidth = "720px";
-    heading.querySelector("[data-format='bold']").classList.add("active");
-    stopEditing(heading);
-    createdElements.push(heading);
-  }
-
-  placements.forEach((placement) => {
-      const node = placement.node;
-      const x = startX + (placement.column - minColumn) * (nodeWidth + horizontalGap);
-      const y = startY + placement.row * (nodeHeight + verticalGap);
-      const shapeType = getFlowchartShapeType(node);
-      const shape = createShape(x, y, shapeType, nodeWidth, nodeHeight);
-      const label = node.detail && node.detail.length <= 110 ? node.label + "\n" + node.detail : node.label;
-
-      setShapeColor(shape, getFlowchartShapeColor(node), false);
-      setShapeLabel(shape, label);
-      shape.dataset.flowRow = placement.row;
-      shape.dataset.flowColumn = placement.column;
-      nodeElements.set(node.id, shape);
-      createdElements.push(shape);
-
-      if (node.detail && node.detail.length > 110) {
-        const detailHeight = getAIStickyHeight(node.detail, detailWidth);
-        const detailSticky = createAISticky(
-          x + nodeWidth + detailGap,
-          y + Math.max(0, (nodeHeight - detailHeight) / 2),
-          detailWidth,
-          detailHeight,
-          node.detail,
-          "ai-detail"
-        );
-
-        detailSticky.dataset.color = "yellow";
-        createdElements.push(detailSticky);
-      }
-  });
-
-  const outgoingConnections = flowchart.connections.reduce((groups, connection) => {
-    groups.set(connection.from, [...(groups.get(connection.from) || []), connection]);
-    return groups;
-  }, new Map());
-
-  flowchart.connections.forEach((connection) => {
-    const fromElement = nodeElements.get(connection.from);
-    const toElement = nodeElements.get(connection.to);
-
-    if (!fromElement || !toElement || fromElement === toElement) return;
-
-    const siblings = outgoingConnections.get(connection.from) || [];
-    const sides = getFlowchartConnectionSides(fromElement, toElement, connection, siblings);
-    createConnectorLine(
-      fromElement.dataset.elementId,
-      sides.from,
-      toElement.dataset.elementId,
-      sides.to,
-      { color: defaultConnectorColor, width: defaultConnectorWidth }
-    );
-    createFlowchartConnectionLabel(connection, fromElement, toElement, createdElements);
-  });
-
-  isSkippingHistory = false;
-  selectElements(createdElements);
+  try {
+    if (replacement) {
+      [...drawLayer.querySelectorAll(".connector-line")].forEach(line => {
+        if (replacement.ids.includes(line.dataset.fromId) && replacement.ids.includes(line.dataset.toId)) removeConnector(line);
+      });
+    }
+    if (prepared.title && !replacement) {
+      const title = createText(right, top - 70, prepared.title);
+      setTextSize(title, 28, false);
+      stopEditing(title);
+      elements.push(title);
+    }
+    prepared.layout.children.forEach(position => {
+      const node = prepared.nodes.find(n => n.id === position.id);
+      const existingNode = replacement?.ids.includes(node.id) ? getConnectableById(node.id) : null;
+      const element = existingNode || createShape(right + position.x, top + position.y, getFlowchartShapeType(node), position.width, position.height);
+      if (!existingNode) setShapeColor(element, getFlowchartShapeColor(node), false);
+      if (element.classList.contains("sticky")) element.querySelector(".sticky-content").innerText = node.label + (node.detail ? "\n" + node.detail : "");
+      else setShapeLabel(element, node.label + (node.detail ? "\n" + node.detail : ""));
+      element.dataset.flowNodeId = node.id;
+      if (!existingNode) setFlowShapeGeometry(element);
+      mapped.set(node.id, { element, position });
+      elements.push(element);
+    });
+    prepared.connections.forEach((edge, index) => {
+      const from = mapped.get(edge.from), to = mapped.get(edge.to);
+      const geometry = prepared.layout.edges.find(e => e.id === "edge-" + index);
+      const port = (entry, suffix) => {
+        const p = entry.position.ports.find(p => p.id === "edge-" + index + suffix);
+        return { x: (p.x + .5) / entry.position.width, y: (p.y + .5) / entry.position.height };
+      };
+      const fromPort = port(from, "-from"), toPort = port(to, "-to");
+      const side = p => p.y <= .01 ? "n" : p.y >= .99 ? "s" : p.x <= .01 ? "w" : "e";
+      const section = geometry.sections?.[0];
+      const route = section ? [section.startPoint, ...(section.bendPoints || []), section.endPoint].map(p => ({ x: p.x + right, y: p.y + top })) : null;
+      createConnectorLine(from.element.dataset.elementId, side(fromPort), to.element.dataset.elementId, side(toPort), {
+        fromPort, toPort, label: edge.label || "", route: replacement ? null : route,
+        routeBounds: connectorBounds(from.element, to.element)
+      });
+    });
+  } catch (error) {
+    restoreBoard(previous);
+    throw error;
+  } finally { isSkippingHistory = false; }
+  updateConnectorPositions();
+  selectElements(elements);
   setActiveTool("select");
   saveHistory();
+  window.FigyWorkspace?.fit(elements);
+  return elements;
 }
 
 function normalizeFlowchartPlan(plan) {
@@ -1802,8 +1866,8 @@ function normalizeFlowchartPlan(plan) {
         label,
         detail: cleanFlowchartLabel(node.detail || node.description || node.note || ""),
         type: cleanAIText(node.type || node.kind || "step").toLowerCase(),
-        row: Number.isFinite(Number(node.row)) ? Number(node.row) : null,
-        column: Number.isFinite(Number(node.column)) ? Number(node.column) : null
+        row: FigyGraph.finite(node.row),
+        column: FigyGraph.finite(node.column)
       };
     })
     .filter((node) => node.id && node.label && !isFlowchartMetaLabel(node.label) && !isFlowchartCodeFragmentLabel(node.label) && !/^[a-z]$/i.test(node.label))
@@ -2473,85 +2537,37 @@ function finishShapeDraft() {
   saveHistory();
 }
 
+let boardDrag = null;
 function makeDraggable(element) {
-  let dragging = false;
-  let dragTarget = element;
-  let offsetX;
-  let offsetY;
-
-  element.addEventListener("mousedown", (e) => {
-    if (activeTool !== "select") return;
-    if (element.classList.contains("editing")) return;
-
-    const point = getBoardPoint(e);
-
-    if (selectedElements.size > 1 && selectedElements.has(element) && !e.altKey) {
-      dragging = true;
-      activeDragMoved = false;
-      activeGroupDrag = {
-        startPoint: point,
-        items: [...selectedElements].map((selectedItem) => ({
-          element: selectedItem,
-          startLeft: selectedItem.offsetLeft,
-          startTop: selectedItem.offsetTop
-        }))
-      };
-      return;
-    }
-
-    dragTarget = e.altKey ? duplicateElementForDrag(element) : element;
-    if (!dragTarget) return;
-
-    dragging = true;
-    activeDragMoved = false;
-
-    offsetX = point.x - dragTarget.offsetLeft;
-    offsetY = point.y - dragTarget.offsetTop;
+  element.tabIndex = 0;
+  element.setAttribute("role", "group");
+  element.setAttribute("aria-label", "Board object");
+  element.addEventListener("keydown", e => {
+    if (e.target !== element || !["Enter", " "].includes(e.key)) return;
+    e.preventDefault();
+    if (e.shiftKey) selectElements([...new Set([...selectedElements, element])]);
+    else selectElement(element);
   });
-
-  document.addEventListener("mousemove", (e) => {
-    if (!dragging) return;
+  element.addEventListener("mousedown", e => {
+    if (activeTool !== "select" || element.classList.contains("editing") || e.button !== 0) return;
     const point = getBoardPoint(e);
-
-    if (activeGroupDrag) {
-      const deltaX = point.x - activeGroupDrag.startPoint.x;
-      const deltaY = point.y - activeGroupDrag.startPoint.y;
-
-      if (Math.abs(deltaX) > 0 || Math.abs(deltaY) > 0) {
-        activeDragMoved = true;
-      }
-
-      activeGroupDrag.items.forEach((item) => {
-        item.element.style.left = item.startLeft + deltaX + "px";
-        item.element.style.top = item.startTop + deltaY + "px";
-      });
-      updateConnectorPositions();
-      return;
-    }
-
-    const nextLeft = point.x - offsetX;
-    const nextTop = point.y - offsetY;
-
-    if (nextLeft !== dragTarget.offsetLeft || nextTop !== dragTarget.offsetTop) {
-      activeDragMoved = true;
-    }
-
-    dragTarget.style.left = nextLeft + "px";
-    dragTarget.style.top = nextTop + "px";
-    updateConnectorPositions();
-  });
-
-  document.addEventListener("mouseup", () => {
-    if (dragging && (activeDragMoved || dragTarget !== element)) {
-      saveHistory();
-    }
-
-    dragging = false;
-    dragTarget = element;
-    activeGroupDrag = null;
-    activeDragMoved = false;
+    const target = e.altKey ? duplicateElementForDrag(element) : element;
+    if (!target) return;
+    const group = selectedElements.size > 1 && selectedElements.has(element) && !e.altKey ? [...selectedElements].filter(el => el.parentElement === canvas) : [target];
+    boardDrag = { point, moved:false, duplicated:target!==element, items:group.map(el=>({element:el,x:el.offsetLeft,y:el.offsetTop})) };
   });
 }
+document.addEventListener("mousemove", e => {
+  if (!boardDrag) return;
+  const point=getBoardPoint(e),dx=point.x-boardDrag.point.x,dy=point.y-boardDrag.point.y;
+  boardDrag.moved ||= !!(dx || dy);
+  boardDrag.items.forEach(item => {item.element.style.left=item.x+dx+"px";item.element.style.top=item.y+dy+"px";});
+  updateConnectorPositions();
+});
+document.addEventListener("mouseup", () => {
+  if (boardDrag?.moved || boardDrag?.duplicated) saveHistory();
+  boardDrag=null;
+});
 
 function resizeSelectedShape(e) {
   const minSize = activeResize.element.classList.contains("sticky") ? 140 : 28;
@@ -2972,7 +2988,7 @@ function eraseAtPoint(e) {
       updateConnectorToolbar();
     }
 
-    connector.remove();
+    removeConnector(connector);
     activeEraserRemoved = true;
     return;
   }
@@ -3084,7 +3100,8 @@ document.addEventListener("keydown", (e) => {
 
   selectedElements.forEach((element) => {
     removeConnectorsForElement(element);
-    element.remove();
+    if (element.classList.contains("connector-line")) removeConnector(element);
+    else element.remove();
   });
   selectedElements.clear();
   selectedElement = null;

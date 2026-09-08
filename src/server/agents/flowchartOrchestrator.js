@@ -1,13 +1,12 @@
 const { requestStructuredReply } = require("../chat");
+const { validate } = require("../../shared/graph");
 const {
   createGraphPrompt,
   createIntentPrompt,
   createProcessPrompt
 } = require("./flowchartPrompts");
 const {
-  normalizeGraph,
   normalizeIntent,
-  normalizeProcess,
   parseAgentJson
 } = require("./flowchartState");
 
@@ -28,14 +27,29 @@ async function buildFlowchartWithAgents(input, env) {
     env,
     { model, maxTokens: 2400 }
   );
-  const process = normalizeProcess(processStage.output, intent, assistantContext);
+  if (!Array.isArray(processStage.output.steps) || processStage.output.steps.length < 2) throw new Error("The AI did not produce a complete process. Please retry.");
+  const process = processStage.output;
+  const processGraph = {
+    title: process.title || "Flowchart",
+    nodes: process.steps.map(step => ({ ...step, type: step.type === "action" ? "step" : step.type })),
+    connections: process.steps.flatMap(step => step.type === "decision"
+      ? (step.options || []).map(option => ({ from: step.id, to: option.nextStepId, label: option.label }))
+      : step.nextStepId ? [{ from: step.id, to: step.nextStepId, label: "" }] : [])
+  };
+  validate(processGraph);
+  if (intent.requiresBranching && !process.steps.some(step => step.type === "decision")) throw new Error("The AI omitted the required choices. Please retry.");
 
   const graphStage = await runAgentStage(
     createGraphPrompt(intent, process),
     env,
     { model, maxTokens: 3200 }
   );
-  const graph = normalizeGraph(graphStage.output, process, intent);
+  const suggested = validate(graphStage.output);
+  const edgeKey = edge => JSON.stringify([edge.from, edge.to, edge.label || ""]);
+  const equal = (a,b) => JSON.stringify(a.sort()) === JSON.stringify(b.sort());
+  if (!equal(suggested.nodes.map(n=>n.id), processGraph.nodes.map(n=>n.id)) || !equal(suggested.connections.map(edgeKey), processGraph.connections.map(edgeKey))) throw new Error("The layout proposal changed the process. Please retry.");
+  const graph = { ...suggested, assumptions: intent.assumptions };
+  validate(graph);
 
   return {
     plan: graph,
@@ -48,17 +62,13 @@ async function buildFlowchartWithAgents(input, env) {
 }
 
 async function runAgentStage(prompt, env, options) {
-  try {
     const reply = await requestStructuredReply(prompt, env, options);
     const output = parseAgentJson(reply);
-
+    if (!Object.keys(output).length) throw new Error("The AI response was incomplete. Please retry with a smaller flow.");
     return {
       output,
-      status: Object.keys(output).length ? "complete" : "fallback"
+      status: "complete"
     };
-  } catch {
-    return { output: {}, status: "fallback" };
-  }
 }
 
 module.exports = { buildFlowchartWithAgents };

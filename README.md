@@ -1,5 +1,26 @@
 # Figy
 
+## Workspace and Flow Improvements
+
+- The board and chat save locally and reopen on refresh. Local saving is device/browser specific, not cloud sync. Group/Ungroup, board-file export/import, and manual recovery controls have been removed from the toolbar.
+- AI flow requests open a visual preview with zoom, editable assumptions, Simplify, and Add exception paths. Insert is explicit and undoable.
+- Select a flow and use the sparkle button to request a revision. Existing IDs and positions are preserved, external connections remain attached, and changes require an explicit Apply. If the board changes while a revision is open, regenerate the preview.
+- Generated diagrams use ELK layout with separate ports for each connection. There is no four-connection cap and no silently dropped branch. Manual connections remain unrestricted.
+- Connector labels belong to edges, follow movement, and disappear with the edge. Their text and routing survive saving and undo.
+- Board actions include search, fit selection/board, alignment, copying multiple selected objects with their internal connections, click-to-connect for two selected objects, and downloadable HTML review pages. Arrow keys move selected objects; Shift moves by 10 pixels. Focus an object and use Shift+Enter to extend selection without dragging.
+- The chat checkbox controls whether selected board objects are included in requests.
+- `npm install` installs ELK and Lucide. Startup and build copy browser bundles into ignored `assets/vendor/`; Vercel builds include shared graph validation.
+
+### AI Usage Controls
+
+AI routes enforce an origin check, input size limit, 10 requests per client per minute, and 100 requests per service instance per day. Upstream requests have timeouts. `AI_DISABLED=true` pauses AI requests.
+
+For a shared quota across Vercel instances, configure `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` from your Redis service. Without these, counters are in memory and reset on cold starts; they are not a deployment-wide spending guarantee. Origin checks are not authentication. Use deployment access protection for a private pilot, and set provider-side spending limits for a public launch. No Redis account or deployment protection was created automatically.
+
+### Evaluation
+
+Run `npm test` for graph and usage regression checks. `tests/browser.cjs` runs browser checks with Playwright and Chrome against `http://127.0.0.1:4318`; override with `FIGY_TEST_URL` and optionally `PLAYWRIGHT_PATH`. It uses mocked AI replies and does not spend model credits. See `docs/product-evaluation.md` for the proposed usability study and case-study outline. User research has not yet been conducted.
+
 Figy is a lightweight FigJam-style whiteboard built with plain HTML, CSS, JavaScript, and a small local Node server for AI features.
 
 ## What It Can Do

@@ -20,6 +20,6 @@ module.exports = async function handler(req, res) {
 
     await handleChatRequest(req, res, process.env);
   } catch (error) {
-    sendJson(res, 500, { error: error.message || "Something went wrong." });
+    sendJson(res, error.statusCode || 500, { error: error.message || "Something went wrong." });
   }
 };

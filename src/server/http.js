@@ -10,6 +10,7 @@ function sendJson(res, statusCode, payload) {
 
 function readJsonBody(req) {
   if (req.body) {
+    if (JSON.stringify(req.body).length > 100000) return Promise.reject(Object.assign(new Error("Request is too large."), { statusCode: 413 }));
     return Promise.resolve(typeof req.body === "string" ? JSON.parse(req.body) : req.body);
   }
 
@@ -19,7 +20,7 @@ function readJsonBody(req) {
     req.on("data", (chunk) => {
       body += chunk;
 
-      if (body.length > 1000000) {
+      if (body.length > 100000) {
         req.destroy();
         reject(new Error("Request body is too large."));
       }

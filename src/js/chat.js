@@ -37,6 +37,7 @@ function renderChatMessages() {
   });
 
   chatMessages.scrollTop = chatMessages.scrollHeight;
+  window.FigyWorkspace?.save();
 }
 
 function appendAssistantActions(messageElement, message, index) {
@@ -53,12 +54,12 @@ function appendAssistantActions(messageElement, message, index) {
   actions.className = "chat-actions";
 
   if (canCreateFlowchart) {
-    actions.appendChild(createChatAction("Add flowchart", async () => {
-      markActionUsed(actions, "Running 3-agent workflow...");
-      const plan = await generateFlowchartPlan(sourcePrompt, message.content);
+    actions.appendChild(createChatAction("Preview flow", async () => {
+      markActionUsed(actions, "Preparing flow...");
+      const plan = message.plan || await generateFlowchartPlan(sourcePrompt, message.content);
 
-      window.FigyBoard.addAIFlowchart(plan);
-      markActionUsed(actions, "Added flowchart");
+      await window.FigyPreview.show(plan, sourcePrompt);
+      markActionUsed(actions, "Preview ready");
     }));
     actions.dataset.messageIndex = index;
     messageElement.appendChild(actions);
@@ -220,33 +221,9 @@ async function generateFlowchartPlan(userPrompt, assistantReply) {
 
   if (userMermaidPlan.nodes.length) return userMermaidPlan;
 
-  let agentPlan = {};
-
-  try {
-    agentPlan = await window.FigyAI.requestAIFlowchartPlan(userPrompt, assistantReply);
-  } catch {
-    agentPlan = {};
-  }
-
-  if (isUsableFlowchartPlan(agentPlan)) return normalizeChatFlowchartPlan(agentPlan, userPrompt);
-
-  const mermaidPlan = parseMermaidFlowchart(assistantReply, userPrompt);
-
-  if (mermaidPlan.nodes.length) return mermaidPlan;
-
-  const asciiFlowPlan = parseAsciiBoxFlowchart(assistantReply, userPrompt);
-
-  if (asciiFlowPlan.nodes.length) return asciiFlowPlan;
-
-  const bracketFlowPlan = parseBracketFlowchart(assistantReply, userPrompt);
-
-  if (bracketFlowPlan.nodes.length) return bracketFlowPlan;
-
-  const fallbackPlan = createFlowchartPlanFromIdeas(userPrompt, assistantReply);
-
-  if (fallbackPlan.nodes.length) return fallbackPlan;
-
-  return createMinimalFlowchartPlan(userPrompt);
+  const agentPlan = await window.FigyAI.requestAIFlowchartPlan(userPrompt, assistantReply);
+  FigyGraph.validate(agentPlan);
+  return agentPlan;
 }
 
 function parseFlowchartPlan(reply) {
@@ -1033,13 +1010,23 @@ async function handleChatSubmit(e) {
   }
 
   chatHistory.push({ role: "assistant", content: "Thinking..." });
+  const historyAtSubmit = chatHistory;
   renderChatMessages();
   setChatPending(true);
 
   try {
-    const reply = await sendChatMessage();
-    chatHistory[chatHistory.length - 1] = { role: "assistant", content: reply };
+    if (isFlowchartRequest(message)) {
+      const plan = await generateFlowchartPlan(message, document.getElementById("useSelection").checked ? window.FigyWorkspace?.selectionContext() || "" : "");
+      if (chatHistory !== historyAtSubmit) return;
+      chatHistory[chatHistory.length - 1] = { role: "assistant", content: "Flowchart: " + plan.title, plan };
+      await window.FigyPreview.show(plan, message);
+    } else {
+      const reply = await sendChatMessage();
+      if (chatHistory !== historyAtSubmit) return;
+      chatHistory[chatHistory.length - 1] = { role: "assistant", content: reply };
+    }
   } catch (error) {
+    if (chatHistory !== historyAtSubmit) return;
     chatHistory[chatHistory.length - 1] = {
       role: "assistant",
       content: getChatErrorMessage(error)
@@ -1055,10 +1042,10 @@ function getChatErrorMessage(error) {
   const message = error?.message || "";
 
   if (message === "Failed to fetch") {
-    return "The Figy chat server is not running. Start it with npm start, then refresh this page and try again.";
+    return "Could not connect to AI. Check your connection and retry.";
   }
 
-  return message || "Start the local Figy server and add your Hugging Face key in .env.";
+  return message || "AI is unavailable right now. Please retry.";
 }
 
 chatToggle.addEventListener("click", () => {

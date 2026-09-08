@@ -17,6 +17,18 @@
     </div>
   </div>
 
+  <div id="workspaceActions" aria-label="Board actions">
+    <span id="saveStatus" role="status">Opening...</span>
+    <input id="boardSearch" type="search" placeholder="Find on board" aria-label="Find on board">
+    <button id="undoBoard" title="Undo" aria-label="Undo"><i data-lucide="undo-2"></i></button>
+    <button id="redoBoard" title="Redo" aria-label="Redo"><i data-lucide="redo-2"></i></button>
+    <button id="fitBoard" title="Fit selection or board" aria-label="Fit selection or board"><i data-lucide="scan"></i></button>
+    <button id="alignBoard" title="Align selected objects left" aria-label="Align selected objects left"><i data-lucide="align-start-vertical"></i></button>
+    <button id="connectSelected" title="Connect two selected objects" aria-label="Connect two selected objects"><i data-lucide="move-right"></i></button>
+    <button id="refineSelected" title="Refine selected flow" aria-label="Refine selected flow"><i data-lucide="sparkles"></i></button>
+    <button id="reviewBoard" title="Download review page" aria-label="Download review page"><i data-lucide="share-2"></i></button>
+  </div>
+
   <div id="toolbar">
     <button id="selectTool" class="tool-button" title="Select" aria-label="Select tool">
       <img class="select-tool-icon" src="assets/basil_cursor-solid.svg" alt="">
@@ -147,6 +159,7 @@
     </header>
     <div id="chatMessages" class="chat-messages" aria-live="polite"></div>
     <form id="chatForm" class="chat-form">
+      <label class="selection-context"><input id="useSelection" type="checkbox" checked> Include selected objects</label>
       <textarea id="chatInput" rows="1" placeholder="Ask about your board..." aria-label="Chat message"></textarea>
       <button type="submit">Send</button>
     </form>
@@ -166,8 +179,22 @@
     <button id="zoomIn" type="button" title="Zoom in" aria-label="Zoom in">+</button>
   </div>
 
+  <dialog id="flowPreview" aria-labelledby="previewTitle">
+    <header><strong id="previewTitle">Flow preview</strong><div class="preview-tools"><button id="previewZoomOut" title="Zoom preview out" aria-label="Zoom preview out"><i data-lucide="minus"></i></button><button id="previewFit" title="Fit preview" aria-label="Fit preview"><i data-lucide="scan"></i></button><button id="previewZoomIn" title="Zoom preview in" aria-label="Zoom preview in"><i data-lucide="plus"></i></button><button id="closePreview" title="Close preview" aria-label="Close preview"><i data-lucide="x"></i></button></div></header>
+    <div id="previewError" role="status"></div>
+    <div id="previewDrawing"></div>
+    <label for="previewAssumptions">Assumptions</label><textarea id="previewAssumptions" rows="2"></textarea>
+    <footer><button id="simplifyFlow">Simplify</button><button id="expandFlow">Add exception paths</button><button id="reviseFlow">Apply assumptions</button><button id="insertFlow">Insert flow</button></footer>
+  </dialog>
+  <dialog id="refineDialog" aria-labelledby="refineTitle"><form id="refineForm"><h2 id="refineTitle">Refine selection</h2><textarea id="refineInstruction" aria-label="Requested changes" placeholder="Add a recovery path when verification fails" required rows="3"></textarea><div id="refineError" role="status"></div><footer><button type="button" id="cancelRefine">Cancel</button><button type="submit">Preview changes</button></footer></form></dialog>
+  <script src="assets/vendor/elk.bundled.js"></script>
+  <script src="assets/vendor/lucide.js"></script>
+  <script src="src/shared/graph.js"></script>
+  <script src="src/js/flowLayout.js"></script>
   <script src="src/js/aiClient.js"></script>
   <script src="src/js/board.js"></script>
   <script src="src/js/chat.js"></script>
+  <script src="src/js/workspace.js"></script>
+  <script src="src/js/flowPreview.js"></script>
 </body>
 </html>

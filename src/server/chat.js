@@ -1,4 +1,5 @@
 const { readJsonBody, sendJson } = require("./http");
+const { guardAIRequest } = require("./usage");
 
 const defaultHuggingFaceModel = "openai/gpt-oss-120b";
 const defaultGeminiModel = "gemini-2.5-flash";
@@ -13,6 +14,7 @@ const defaultSystemPrompt = "You are Figy Assistant, a concise helper for brains
 const defaultMaxTokens = 1200;
 
 async function handleChatRequest(req, res, env) {
+  await guardAIRequest(req, env);
   const body = await readJsonBody(req);
   const messages = Array.isArray(body.messages) ? body.messages : [];
   const model = getRequestedModel(body.model, env);
@@ -22,8 +24,8 @@ async function handleChatRequest(req, res, env) {
   const apiKey = getProviderApiKey(provider, env);
 
   if (!apiKey) {
-    sendJson(res, 200, {
-      reply: "Add your Gemini API key as GEMINI_API_KEY, then restart locally or redeploy on Vercel. You can also use GOOGLE_API_KEY or GOOGLE_GENERATIVE_AI_API_KEY."
+    sendJson(res, 503, {
+      error: "AI is not configured for this model. Choose another model or contact the board owner."
     });
     return;
   }
@@ -93,6 +95,7 @@ async function runChat(messages, env, model, provider, maxTokens, responseFormat
 async function runGeminiChat(messages, env, model, maxTokens, responseFormat = "text") {
   const apiKey = getGeminiApiKey(env);
   const response = await fetch("https://generativelanguage.googleapis.com/v1beta/models/" + model + ":generateContent", {
+    signal: AbortSignal.timeout(15000),
     method: "POST",
     headers: {
       "x-goog-api-key": apiKey,
@@ -152,6 +155,7 @@ async function runHuggingFaceChat(messages, env, model, maxTokens) {
   }
 
   const response = await fetch("https://api-inference.huggingface.co/models/" + model, {
+    signal: AbortSignal.timeout(15000),
     method: "POST",
     headers: {
       Authorization: "Bearer " + env.HUGGINGFACE_API_KEY,
@@ -185,6 +189,7 @@ async function runHuggingFaceChat(messages, env, model, maxTokens) {
 
 async function runHuggingFaceRouterChat(messages, env, model, maxTokens) {
   const response = await fetch("https://router.huggingface.co/v1/chat/completions", {
+    signal: AbortSignal.timeout(15000),
     method: "POST",
     headers: {
       Authorization: "Bearer " + env.HUGGINGFACE_API_KEY,

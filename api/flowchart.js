@@ -15,6 +15,6 @@ module.exports = async function handler(req, res) {
 
     await handleFlowchartRequest(req, res, process.env);
   } catch (error) {
-    sendJson(res, 500, { error: error.message || "Could not build the flowchart." });
+    sendJson(res, error.statusCode || 500, { error: error.message || "Could not build the flowchart." });
   }
 };

@@ -11,6 +11,7 @@ copyFile("index.html");
 copyDir("assets");
 copyDir(path.join("src", "js"));
 copyDir(path.join("src", "styles"));
+copyDir(path.join("src", "shared"));
 
 console.log("Built static Figy app in dist/");
 

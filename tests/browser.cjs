@@ -1,0 +1,56 @@
+const assert = require("node:assert/strict");
+const {chromium} = require(process.env.PLAYWRIGHT_PATH || "playwright");
+(async()=>{
+  const browser=await chromium.launch({headless:true,channel:'chrome'});
+  try {
+    const page=await browser.newPage({viewport:{width:1440,height:1000}});
+    const errors=[];page.on('pageerror',e=>errors.push(e.message));
+    await page.goto(process.env.FIGY_TEST_URL || 'http://127.0.0.1:4318');
+    await page.waitForFunction(()=>window.FigyWorkspace && window.FigyPreview);
+    const plan={title:'Account recovery',nodes:[{id:'start',type:'start',label:'Forgot password'},{id:'choice',type:'decision',label:'Can you access your email?'},{id:'email',type:'step',label:'Send reset link'},{id:'support',type:'step',label:'Verify identity with support'},{id:'end',type:'end',label:'Access restored'}],connections:[{from:'start',to:'choice'},{from:'choice',to:'email',label:'Yes'},{from:'choice',to:'support',label:'No'},{from:'email',to:'end'},{from:'support',to:'end'}]};
+    await page.evaluate(p=>FigyPreview.show(p),plan);
+    await page.locator('#insertFlow').click();
+    assert.equal(await page.locator('.shape-item').count(),5);
+    assert.equal(await page.locator('.connector-line').count(),5);
+    assert.equal(await page.locator('.edge-label').count(),2);
+    await page.evaluate(()=>FigyWorkspace.flush());
+    await page.reload();await page.waitForFunction(()=>window.FigyWorkspace);
+    assert.equal(await page.locator('.shape-item').count(),5);
+    assert.equal(await page.locator('.connector-line').count(),5);
+    const before=await page.locator('.edge-label').first().getAttribute('x');
+    await page.evaluate(()=>{const line=drawLayer.querySelector('.connector-line[data-label="Yes"]');const e=getConnectableById(line.dataset.fromId);e.style.left=e.offsetLeft+160+'px';updateConnectorPositions();});
+    assert.notEqual(await page.locator('.edge-label').first().getAttribute('x'),before);
+    await page.evaluate(()=>{clearSelection();const e=drawLayer.querySelector('.connector-line[data-label="Yes"]');selectElement(e);});
+    await page.keyboard.press('Delete');assert.equal(await page.locator('.edge-label').count(),1);
+    await page.locator('#undoBoard').click();assert.equal(await page.locator('.edge-label').count(),2);
+    const revision=await page.evaluate(()=>{
+      selectElements([...canvas.querySelectorAll('.shape-item')]);
+      const snapshot=serializeBoard();
+      return {title:'Revised flow',nodes:snapshot.items.filter(i=>i.type==='shape').map(i=>({id:i.id,label:i.label+' revised',type:i.shape==='diamond'?'decision':/Forgot/.test(i.label)?'start':/restored/.test(i.label)?'end':'step'})),connections:snapshot.connectors.map(c=>({from:c.fromId,to:c.toId,label:c.label}))};
+    });
+    await page.route('**/api/chat',route=>route.fulfill({contentType:'application/json',body:JSON.stringify({reply:JSON.stringify(revision)})}));
+    const existingPositions=await page.evaluate(()=>[...canvas.querySelectorAll('.shape-item')].map(e=>[e.dataset.elementId,e.offsetLeft,e.offsetTop]));
+    await page.locator('#refineSelected').click();await page.locator('#refineInstruction').fill('Clarify the wording');await page.getByRole('button',{name:'Preview changes'}).click();
+    await page.waitForFunction(()=>document.getElementById('flowPreview').open && !document.getElementById('insertFlow').disabled);
+    assert.equal(await page.locator('.shape-label').filter({hasText:'revised'}).count(),0);
+    await page.locator('#insertFlow').click();
+    assert.equal(await page.locator('.shape-label').filter({hasText:'revised'}).count(),5);
+    assert.deepEqual(await page.evaluate(()=>[...canvas.querySelectorAll('.shape-item')].map(e=>[e.dataset.elementId,e.offsetLeft,e.offsetTop])),existingPositions);
+    await page.locator('#undoBoard').click();assert.equal(await page.locator('.shape-label').filter({hasText:'revised'}).count(),0);
+    await page.evaluate(()=>{selectElements([...canvas.querySelectorAll('.shape-item')]);});
+    await page.keyboard.press('Meta+c');await page.keyboard.press('Meta+v');
+    assert.equal(await page.locator('.shape-item').count(),10);assert.equal(await page.locator('.connector-line').count(),10);
+    await page.locator('#undoBoard').click();
+    await page.evaluate(()=>{createStrokeItem([{x:20,y:20},{x:100,y:90}],{width:7});saveHistory();FigyWorkspace.flush();});
+    const strokeBefore=await page.evaluate(()=>serializeBoard().items.find(i=>i.type==='stroke'));
+    await page.reload();await page.waitForFunction(()=>window.FigyWorkspace);
+    assert.deepEqual(await page.evaluate(()=>serializeBoard().items.find(i=>i.type==='stroke')),strokeBefore);
+    await page.evaluate(()=>{selectElements([...canvas.querySelectorAll('.shape-item')]);setChatOpen(false);FigyWorkspace.fit();});
+    await page.screenshot({path:'/tmp/figy-desktop.png'});
+    await page.locator('#themeToggle').click();await page.screenshot({path:'/tmp/figy-dark.png'});
+    await page.setViewportSize({width:390,height:844});await page.evaluate(()=>FigyWorkspace.fit());await page.screenshot({path:'/tmp/figy-mobile.png'});
+    const toolbar=await page.locator('#toolbar').boundingBox(),zoom=await page.locator('#zoomControls').boundingBox();assert.ok(zoom.y+zoom.height<=toolbar.y,'Zoom must not overlap toolbar');
+    assert.equal(errors.length,0,errors.join('\n'));
+    console.log('Browser checks passed: preview, insertion, persistence, edge labels, undo, desktop/mobile.');
+  } finally {await browser.close();}
+})().catch(e=>{console.error(e);process.exit(1);});

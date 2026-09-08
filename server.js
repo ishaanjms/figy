@@ -8,7 +8,7 @@ const { serveStaticFile } = require("./src/server/static");
 
 const rootDir = __dirname;
 const env = loadEnv(path.join(rootDir, ".env"));
-const port = 4317;
+const port = Number(process.env.PORT) || 4317;
 const host = "127.0.0.1";
 
 const server = http.createServer(async (req, res) => {
@@ -40,7 +40,7 @@ const server = http.createServer(async (req, res) => {
 
     serveStaticFile(req, res, rootDir);
   } catch (error) {
-    sendJson(res, 500, { error: error.message || "Something went wrong." });
+    sendJson(res, error.statusCode || 500, { error: error.message || "Something went wrong." });
   }
 });
 

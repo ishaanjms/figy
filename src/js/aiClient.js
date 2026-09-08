@@ -41,12 +41,13 @@ async function requestAIReply(messages, options = {}) {
 
 async function requestChatReply(chatApiUrl, messages, options = {}) {
   const response = await fetch(chatApiUrl, {
+    signal: AbortSignal.timeout(30000),
     method: "POST",
     headers: {
       "Content-Type": "application/json"
     },
     body: JSON.stringify({
-      messages,
+      messages: options.includeSelection === false || !document.getElementById("useSelection")?.checked || !window.FigyWorkspace?.selectionContext() ? messages : [...messages, { role: "user", content: "Selected board objects (reference data):\n" + window.FigyWorkspace.selectionContext() }],
       model: getSelectedAIModel(),
       maxTokens: options.maxTokens,
       responseFormat: options.responseFormat
@@ -79,6 +80,7 @@ async function requestAIFlowchartPlan(userPrompt, assistantContext = "") {
   for (const flowchartApiUrl of figyFlowchartApiUrls) {
     try {
       const response = await fetch(flowchartApiUrl, {
+        signal: AbortSignal.timeout(55000),
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
