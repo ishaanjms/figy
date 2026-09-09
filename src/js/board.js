@@ -5,6 +5,16 @@ const marqueeSelection = document.createElement("div");
 marqueeSelection.className = "marquee-selection";
 const connectorToolbar = document.createElement("div");
 connectorToolbar.className = "connector-toolbar";
+const objectContextMenu = document.createElement("div");
+objectContextMenu.className = "object-context-menu";
+objectContextMenu.setAttribute("role", "menu");
+objectContextMenu.setAttribute("aria-label", "Object actions");
+objectContextMenu.hidden = true;
+objectContextMenu.innerHTML = `
+  <button type="button" data-action="bring-front" role="menuitem"><i data-lucide="bring-to-front" aria-hidden="true"></i><span>Bring to front</span></button>
+  <button type="button" data-action="send-back" role="menuitem"><i data-lucide="send-to-back" aria-hidden="true"></i><span>Send to back</span></button>
+  <button type="button" data-action="delete" role="menuitem"><i data-lucide="trash-2" aria-hidden="true"></i><span>Delete</span></button>
+`;
 const selectButton = document.getElementById("selectTool");
 const panButton = document.getElementById("panTool");
 const addButton = document.getElementById("addSticky");
@@ -599,6 +609,92 @@ function selectElements(elements) {
   }
 
   updateConnectorToolbar();
+}
+
+function getSelectedBoardObjects() {
+  return [...selectedElements].filter((element) => canvas.contains(element) && element !== drawLayer);
+}
+
+function deleteSelectedElements() {
+  if (!selectedElements.size) return false;
+
+  selectedElements.forEach((element) => {
+    removeConnectorsForElement(element);
+    if (element.classList.contains("connector-line")) removeConnector(element);
+    else element.remove();
+  });
+  selectedElements.clear();
+  selectedElement = null;
+  updateConnectorToolbar();
+  hideObjectContextMenu();
+  saveHistory();
+  return true;
+}
+
+function bringSelectedToFront() {
+  const elements = getSelectedBoardObjects();
+
+  if (!elements.length) return false;
+
+  elements
+    .sort((a, b) => getCanvasOrder(a) - getCanvasOrder(b))
+    .forEach((element) => canvas.appendChild(element));
+  updateConnectorPositions();
+  hideObjectContextMenu();
+  saveHistory();
+  return true;
+}
+
+function sendSelectedToBack() {
+  const elements = getSelectedBoardObjects();
+
+  if (!elements.length) return false;
+
+  const elementSet = new Set(elements);
+  const reference = [...canvas.children].find((child) => child !== drawLayer && !elementSet.has(child)) || null;
+
+  elements
+    .sort((a, b) => getCanvasOrder(a) - getCanvasOrder(b))
+    .forEach((element) => canvas.insertBefore(element, reference));
+  updateConnectorPositions();
+  hideObjectContextMenu();
+  saveHistory();
+  return true;
+}
+
+function getCanvasOrder(element) {
+  return [...canvas.children].indexOf(element);
+}
+
+function getObjectFromEvent(event) {
+  const target = event.target.closest?.(".sticky, .text-item, .shape-item, .stroke-item");
+
+  return target && canvas.contains(target) ? target : null;
+}
+
+function showObjectContextMenu(event, element) {
+  event.preventDefault();
+  event.stopPropagation();
+
+  if (!selectedElements.has(element)) {
+    selectElement(element);
+  }
+
+  objectContextMenu.hidden = false;
+  objectContextMenu.style.left = "0px";
+  objectContextMenu.style.top = "0px";
+
+  const menuRect = objectContextMenu.getBoundingClientRect();
+  const left = Math.min(event.clientX, window.innerWidth - menuRect.width - 10);
+  const top = Math.min(event.clientY, window.innerHeight - menuRect.height - 10);
+
+  objectContextMenu.style.left = Math.max(10, left) + "px";
+  objectContextMenu.style.top = Math.max(10, top) + "px";
+  window.lucide?.createIcons?.();
+}
+
+function hideObjectContextMenu() {
+  objectContextMenu.hidden = true;
 }
 
 function updateMarqueeSelection(e) {
@@ -1623,7 +1719,7 @@ function createStrokeItem(points, options = {}) {
     points: JSON.stringify(relativePoints),
     color,
     strokeWidth: widthValue
-  }, options.shouldSelect !== false);
+  }, options.shouldSelect === true);
 }
 
 function createStrokeItemFromData(strokeData, shouldSelect = false) {
@@ -2569,6 +2665,30 @@ document.addEventListener("mouseup", () => {
   boardDrag=null;
 });
 
+objectContextMenu.addEventListener("mousedown", (e) => {
+  e.preventDefault();
+  e.stopPropagation();
+});
+
+objectContextMenu.addEventListener("click", (e) => {
+  const button = e.target.closest("button[data-action]");
+
+  if (!button) return;
+
+  e.preventDefault();
+  e.stopPropagation();
+
+  if (button.dataset.action === "bring-front") bringSelectedToFront();
+  if (button.dataset.action === "send-back") sendSelectedToBack();
+  if (button.dataset.action === "delete") deleteSelectedElements();
+});
+
+document.addEventListener("mousedown", (e) => {
+  if (!objectContextMenu.hidden && !objectContextMenu.contains(e.target)) hideObjectContextMenu();
+});
+
+window.addEventListener("resize", hideObjectContextMenu);
+
 function resizeSelectedShape(e) {
   const minSize = activeResize.element.classList.contains("sticky") ? 140 : 28;
   const point = getBoardPoint(e);
@@ -2770,6 +2890,7 @@ zoomLevel.addEventListener("blur", () => {
 });
 
 board.addEventListener("click", (e) => {
+  hideObjectContextMenu();
   stickyTool.classList.remove("open");
   pencilTool.classList.remove("open");
 
@@ -2789,10 +2910,23 @@ board.addEventListener("click", (e) => {
   clearSelection();
 });
 
+board.addEventListener("contextmenu", (e) => {
+  const element = getObjectFromEvent(e);
+
+  if (!element || element.classList.contains("editing")) {
+    hideObjectContextMenu();
+    return;
+  }
+
+  showObjectContextMenu(e, element);
+});
+
 board.addEventListener("wheel", zoomWithWheel, { passive: false });
 
 board.addEventListener("pointerdown", (e) => {
   const isBoardSurface = e.target === board || e.target === canvas || e.target === drawLayer;
+
+  if (e.button !== 0) return;
 
   if (activeTool === "pan" && !e.target.closest("#toolbar, #zoomControls, #fileHeader")) {
     isPanning = true;
@@ -3039,6 +3173,10 @@ function getDistanceToSegment(point, start, end) {
 }
 
 document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") {
+    hideObjectContextMenu();
+  }
+
   if (isEditableTarget(e.target)) return;
 
   const isShortcut = e.ctrlKey || e.metaKey;
@@ -3078,19 +3216,12 @@ document.addEventListener("keydown", (e) => {
 
   if (!isDeleteKey || !selectedElements.size || isEditing) return;
 
-  selectedElements.forEach((element) => {
-    removeConnectorsForElement(element);
-    if (element.classList.contains("connector-line")) removeConnector(element);
-    else element.remove();
-  });
-  selectedElements.clear();
-  selectedElement = null;
-  updateConnectorToolbar();
-  saveHistory();
+  deleteSelectedElements();
 });
 
 setupConnectorToolbar();
 board.append(connectorToolbar, marqueeSelection);
+document.body.appendChild(objectContextMenu);
 setZoom(zoom);
 setPan(panX, panY);
 setActiveTool(activeTool);

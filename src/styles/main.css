@@ -532,6 +532,53 @@ body.dark .shape-tool-icon {
   display: block;
 }
 
+.object-context-menu {
+  position: fixed;
+  z-index: 220;
+  min-width: 156px;
+  padding: 5px;
+  border: 1px solid var(--floating-panel-border);
+  border-radius: 9px;
+  background: var(--floating-panel);
+  color: var(--on-floating);
+  box-shadow: var(--shadow-popover);
+}
+
+.object-context-menu[hidden] {
+  display: none;
+}
+
+.object-context-menu button {
+  appearance: none;
+  width: 100%;
+  min-height: 32px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 9px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 650;
+  text-align: left;
+}
+
+.object-context-menu button:hover,
+.object-context-menu button:focus-visible {
+  background: color-mix(in srgb, var(--on-floating) 10%, transparent);
+  outline: none;
+}
+
+.object-context-menu svg {
+  width: 15px;
+  height: 15px;
+  flex: 0 0 auto;
+}
+
 #drawLayer {
   position: absolute;
   inset: 0;
@@ -661,6 +708,15 @@ body.dark .shape-tool-icon {
 
 body.tool-pencil #board {
   cursor: crosshair;
+}
+
+body.tool-pencil .sticky,
+body.tool-pencil .text-item,
+body.tool-pencil .shape-item,
+body.tool-pencil .stroke-item,
+body.tool-pencil .connector-line {
+  cursor: crosshair;
+  pointer-events: none;
 }
 
 body.tool-eraser #board {
