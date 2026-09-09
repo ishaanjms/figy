@@ -336,7 +336,10 @@ function getRequestedModel(requestedModel, env) {
 }
 
 function getDefaultModel(env) {
-  return getGeminiApiKey(env) && !env.HUGGINGFACE_API_KEY ? getGeminiModel(env) : getHuggingFaceModel(env);
+  if (String(env.AI_PROVIDER || "").trim().toLowerCase() === "huggingface") return getHuggingFaceModel(env);
+  if (getGeminiApiKey(env)) return getGeminiModel(env);
+
+  return getHuggingFaceModel(env);
 }
 
 function getProvider(model, env) {
