@@ -842,7 +842,7 @@ body.dark .theme-switch-thumb {
   bottom: 144px;
   z-index: 115;
   width: min(420px, calc(100vw - 48px));
-  max-height: min(640px, calc(100vh - 176px));
+  max-height: min(640px, calc(100dvh - 232px));
   display: none;
   flex-direction: column;
   overflow: hidden;
