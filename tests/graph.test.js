@@ -16,13 +16,12 @@ test("ELK preserves every edge and distinct anchors for high-degree nodes",async
   for(const a of result.layout.children)for(const b of result.layout.children){if(a===b)continue;assert.ok(a.x+a.width<=b.x || b.x+b.width<=a.x || a.y+a.height<=b.y || b.y+b.height<=a.y);}
 });
 test("missing credentials fail instead of generating a pretend chart",async()=>{const {buildFlowchartWithAgents}=require("../src/server/agents/flowchartOrchestrator");await assert.rejects(buildFlowchartWithAgents({userPrompt:"Account recovery"},{}),/API key/);});
-test("three stages preserve the approved process",async()=>{
+test("three coordinated stages preserve the approved process",async()=>{
   const original=global.fetch;
   const intent={goal:'Choose a path',chartStyle:'branching',requiresBranching:true,possiblePaths:[{label:'Yes'},{label:'No'}],assumptions:['Both options are available']};
   const process={title:'Choice',steps:[{id:'start',type:'start',label:'Start',nextStepId:'decision'},{id:'decision',type:'decision',label:'Proceed?',options:[{label:'Yes',nextStepId:'yes'},{label:'No',nextStepId:'no'}]},{id:'yes',type:'end',label:'Proceed'},{id:'no',type:'end',label:'Stop'}]};
   const graph={title:'Choice',nodes:process.steps.map(s=>({id:s.id,type:s.type,label:s.label})),connections:[{from:'start',to:'decision'},{from:'decision',to:'yes',label:'Yes'},{from:'decision',to:'no',label:'No'}]};
-  const replies=[intent,process,graph];
-  global.fetch=async()=>({ok:true,json:async()=>({choices:[{message:{content:JSON.stringify(replies.shift())}}]})});
+  global.fetch=async()=>({ok:true,json:async()=>({choices:[{message:{content:JSON.stringify({intent,process,graph})}}]})});
   try{const {buildFlowchartWithAgents}=require('../src/server/agents/flowchartOrchestrator');const result=await buildFlowchartWithAgents({userPrompt:'A decision flow'},{HUGGINGFACE_API_KEY:'test-only'});assert.equal(result.plan.connections.length,3);assert.deepEqual(result.stages,{intent:'complete',process:'complete',graph:'complete'});assert.deepEqual(result.plan.assumptions,intent.assumptions);}
   finally{global.fetch=original;}
 });

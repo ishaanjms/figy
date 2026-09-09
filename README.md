@@ -7,6 +7,8 @@
 - Generated diagrams use ELK layout with separate ports for each connection. There is no four-connection cap and no silently dropped branch. Manual connections remain unrestricted.
 - Connector labels belong to edges, follow movement, and disappear with the edge. Their text and routing survive saving and undo.
 - Board actions include search, fit selection/board, alignment, copying multiple selected objects with their internal connections, click-to-connect for two selected objects, and downloadable HTML review pages. Arrow keys move selected objects; Shift moves by 10 pixels. Focus an object and use Shift+Enter to extend selection without dragging.
+- The visual system uses warm neutral canvas tokens, hairline borders, subtle shadows, and theme-aware sticky/flowchart colors so generated boards stay readable in light and dark mode.
+- The AI chat opens with a welcome card, board-focused quick prompts, a direct model picklist in the composer, and a new-chat action that resets the conversation without touching the board.
 - The chat checkbox controls whether selected board objects are included in requests.
 - `npm install` installs ELK and Lucide. Startup and build copy browser bundles into ignored `assets/vendor/`; Vercel builds include shared graph validation.
 
@@ -54,7 +56,7 @@ src/
     chat.js          Gemini and Hugging Face chat logic, with an optional LangChain path
     flowchart.js     Three-agent flowchart request handler
     agents/
-      flowchartOrchestrator.js  Runs Intent, Process, and Graph agents in sequence
+      flowchartOrchestrator.js  Runs Intent, Process, and Graph agents in one coordinated provider call
       flowchartPrompts.js       Agent roles, prompts, and JSON contracts
       flowchartState.js         Structured handoffs, normalization, and fallbacks
     env.js           .env loader
@@ -143,7 +145,7 @@ You should see `"hasGeminiKey": true`. If it is `false`, the variable was added 
 
 5. Deploy the project.
 
-On Vercel, the app uses `/api/chat` for conversation and `/api/flowchart` for the three-agent flowchart workflow. The local `server.js` exposes both routes when running Figy on your computer.
+On Vercel, the app uses `/api/chat` for conversation and `/api/flowchart` for the three-agent flowchart workflow. The flowchart agents are coordinated in one structured provider call to avoid serverless timeouts. The local `server.js` exposes both routes when running Figy on your computer.
 
 The app includes a small AI model selector in the chatbot header. Only the private API key needs to be stored as a Vercel environment variable.
 
@@ -158,8 +160,8 @@ On Vercel, the Gemini key is read from Vercel Environment Variables. Do not uplo
 Default AI settings live in `src/server/chat.js`:
 
 ```text
-Default model: gemini-2.5-flash
-Available models: gemini-2.5-flash, gemini-2.0-flash, openai/gpt-oss-120b, Qwen/Qwen3.8-2.4T-A95B, deepseek-ai/DeepSeek-V4-Pro
+Default model: gemini-flash-lite-latest
+Available models: gemini-flash-lite-latest, gemini-3.8-flash, gemini-3.6-flash, gemini-2.5-flash, openai/gpt-oss-120b, Qwen/Qwen3.8-2.4T-A95B, deepseek-ai/DeepSeek-V4-Pro
 Max tokens: 1200
 LangChain: optional and off by default
 ```

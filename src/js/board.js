@@ -24,9 +24,6 @@ const themeToggle = document.getElementById("themeToggle");
 const zoomInButton = document.getElementById("zoomIn");
 const zoomOutButton = document.getElementById("zoomOut");
 const zoomLevel = document.getElementById("zoomLevel");
-const modelSettings = document.getElementById("modelSettings");
-const modelSettingsButton = document.getElementById("modelSettingsButton");
-const modelSettingsMenu = document.getElementById("modelSettingsMenu");
 const aiModelSelect = document.getElementById("aiModelSelect");
 const fileName = document.getElementById("fileName");
 const stickyPlaceholder = "Type something...";
@@ -186,8 +183,11 @@ function setFileName(nextName) {
 }
 
 function setAIModel(model) {
-  aiModelSelect.value = model;
-  localStorage.setItem(modelStorageKey, model);
+  const hasModelOption = Array.from(aiModelSelect.options).some((option) => option.value === model);
+  const nextModel = hasModelOption ? model : aiModelSelect.options[0].value;
+
+  aiModelSelect.value = nextModel;
+  localStorage.setItem(modelStorageKey, nextModel);
 }
 
 function setTheme(theme) {
@@ -2746,26 +2746,8 @@ themeToggle.addEventListener("click", () => {
   setTheme(document.body.classList.contains("dark") ? "light" : "dark");
 });
 
-modelSettingsButton.addEventListener("click", (e) => {
-  e.stopPropagation();
-  const isOpen = !modelSettings.classList.contains("open");
-
-  modelSettings.classList.toggle("open", isOpen);
-  modelSettingsButton.setAttribute("aria-expanded", String(isOpen));
-});
-
-modelSettingsMenu.addEventListener("mousedown", (e) => {
-  e.stopPropagation();
-});
-
-modelSettingsMenu.addEventListener("click", (e) => {
-  e.stopPropagation();
-});
-
 aiModelSelect.addEventListener("change", () => {
   setAIModel(aiModelSelect.value);
-  modelSettings.classList.remove("open");
-  modelSettingsButton.setAttribute("aria-expanded", "false");
 });
 
 zoomOutButton.addEventListener("click", () => {
@@ -2790,8 +2772,6 @@ zoomLevel.addEventListener("blur", () => {
 board.addEventListener("click", (e) => {
   stickyTool.classList.remove("open");
   pencilTool.classList.remove("open");
-  modelSettings.classList.remove("open");
-  modelSettingsButton.setAttribute("aria-expanded", "false");
 
   if (ignoreNextBoardClick) {
     ignoreNextBoardClick = false;

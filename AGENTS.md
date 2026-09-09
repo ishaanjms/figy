@@ -44,7 +44,7 @@ src/server/
     Three-agent flowchart endpoint handler.
   agents/
     flowchartOrchestrator.js
-      Runs the Intent, Process, and Graph Architect stages sequentially.
+      Runs the Intent, Process, and Graph Architect stages in one coordinated provider call.
     flowchartPrompts.js
       Agent prompts and structured JSON contracts.
     flowchartState.js
@@ -104,6 +104,7 @@ This project is now Vercel-ready.
 - Hosted AI calls use `api/chat.js` and `api/flowchart.js`.
 - `api/chat.js` reuses `src/server/chat.js`.
 - `api/flowchart.js` reuses the server-side three-agent flowchart orchestrator.
+- The flowchart agents are coordinated in one structured provider call to avoid serverless/provider timeouts.
 - Vercel env vars are read from `process.env`.
 - Local `.env` is only for `server.js` on the user's machine.
 

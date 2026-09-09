@@ -34,6 +34,12 @@ const graphSchema = {
   connections: [{ from: "source-id", to: "target-id", label: "Optional choice label" }]
 };
 
+const orchestratedFlowchartSchema = {
+  intent: intentSchema,
+  process: processSchema,
+  graph: graphSchema
+};
+
 function createIntentPrompt(userPrompt, assistantContext) {
   return [
     "You are the Intent Agent in Figy's flowchart system.",
@@ -89,8 +95,29 @@ function createGraphPrompt(intent, process) {
   ].join("\n");
 }
 
+function createOrchestratedFlowchartPrompt(userPrompt, assistantContext) {
+  return [
+    "Return only minified JSON for Figy's coordinated three-agent flowchart system.",
+    "Schema:",
+    JSON.stringify(orchestratedFlowchartSchema),
+    "Rules:",
+    "1. intent infers the goal, chartStyle, requiresBranching, assumptions, and possiblePaths.",
+    "2. process has 5-10 useful real-world steps.",
+    "3. Use decisions only for meaningful choices; each decision needs 2+ options with different labels and target ids.",
+    "4. graph uses exactly the process step ids and exactly the process edges.",
+    "5. Put choice words on connection labels, not in node labels.",
+    "6. Assign row/column for a compact top-to-bottom graph with branches in separate columns.",
+    "7. No Mermaid, markdown, code fences, ASCII, or prose.",
+    "Request:",
+    userPrompt || "Create a useful process flowchart.",
+    "Context:",
+    String(assistantContext || "").slice(0, 7000)
+  ].join("\n");
+}
+
 module.exports = {
   createGraphPrompt,
   createIntentPrompt,
+  createOrchestratedFlowchartPrompt,
   createProcessPrompt
 };

@@ -1,6 +1,6 @@
 const figyChatApiUrls = getFigyChatApiUrls();
 const figyFlowchartApiUrls = getFigyFlowchartApiUrls();
-const defaultFigyModel = "gemini-2.5-flash";
+const defaultFigyModel = "gemini-flash-lite-latest";
 const figyModelStorageKey = "figy-ai-model";
 
 function getFigyChatApiUrls() {
@@ -107,11 +107,29 @@ async function requestAIFlowchartPlan(userPrompt, assistantContext = "") {
     }
   }
 
-  throw lastError || new Error("Could not build the flowchart.");
+  throw normalizeFlowchartRequestError(lastError);
 }
 
 function getSelectedAIModel() {
-  return localStorage.getItem(figyModelStorageKey) || defaultFigyModel;
+  const storedModel = localStorage.getItem(figyModelStorageKey);
+
+  if (storedModel === "gemini-2.0-flash") return defaultFigyModel;
+
+  return storedModel || defaultFigyModel;
+}
+
+function normalizeFlowchartRequestError(error) {
+  const message = error?.message || "";
+
+  if (error?.name === "TimeoutError" || error?.name === "AbortError" || /abort|timeout|timed out/i.test(message)) {
+    return new Error("The AI took too long to build this flow. Try again with Gemini Flash Lite or ask for a simpler flow.");
+  }
+
+  if (message === "Failed to fetch") {
+    return new Error("Could not reach Figy's AI flowchart service. If this is a local preview, start Figy with npm start and open http://127.0.0.1:4317.");
+  }
+
+  return error || new Error("Could not build the flowchart.");
 }
 
 window.FigyAI = {

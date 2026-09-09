@@ -4,7 +4,17 @@ const chatClose = document.getElementById("chatClose");
 const chatMessages = document.getElementById("chatMessages");
 const chatForm = document.getElementById("chatForm");
 const chatInput = document.getElementById("chatInput");
+const chatSubmit = document.getElementById("chatSubmit");
+const newChatSession = document.getElementById("newChatSession");
 const chatWelcomeMessage = "Hi, I can help you brainstorm, summarize ideas, or turn rough sticky notes into cleaner wording.";
+const chatQuickPrompts = [
+  { label: "Map a flow", icon: "git-fork", prompt: "Make a simple, non-linear flowchart for " },
+  { label: "Organize ideas", icon: "layout-grid", prompt: "Organize these ideas into clear sticky notes: " },
+  { label: "Summarize board", icon: "scan-text", prompt: "Summarize the selected board objects into key points." },
+  { label: "Make a plan", icon: "map", prompt: "Make a practical step-by-step plan for " },
+  { label: "Help me write", icon: "pen-tool", prompt: "Help me write clearer copy for " },
+  { label: "More ideas", icon: "sparkles", prompt: "Generate more useful ideas for " }
+];
 let chatHistory = [
   { role: "assistant", content: chatWelcomeMessage }
 ];
@@ -21,8 +31,15 @@ function setChatOpen(isOpen) {
 
 function renderChatMessages() {
   chatMessages.innerHTML = "";
+  const hasOnlyWelcome = chatHistory.length === 1 && chatHistory[0]?.content === chatWelcomeMessage;
+
+  if (hasOnlyWelcome) {
+    chatMessages.appendChild(createChatWelcome());
+  }
 
   chatHistory.forEach((message, index) => {
+    if (index === 0 && message.content === chatWelcomeMessage) return;
+
     const messageElement = document.createElement("div");
     messageElement.className = "chat-message " + message.role;
 
@@ -37,7 +54,44 @@ function renderChatMessages() {
   });
 
   chatMessages.scrollTop = chatMessages.scrollHeight;
+  refreshChatIcons();
   window.FigyWorkspace?.save();
+}
+
+function createChatWelcome() {
+  const welcome = document.createElement("div");
+  welcome.className = "chat-welcome";
+  welcome.innerHTML = `
+    <div class="chat-welcome-mark"><img src="assets/figy_logo.svg" alt="" aria-hidden="true"></div>
+    <div class="chat-welcome-copy">
+      <p>Hi there,</p>
+      <h2>What should we make clearer today?</h2>
+      <span>Choose a starting point, or tell Figy what you need on the board.</span>
+    </div>
+    <div class="chat-quick-prompts" aria-label="Quick prompts"></div>
+  `;
+
+  const prompts = welcome.querySelector(".chat-quick-prompts");
+  chatQuickPrompts.forEach((item) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "chat-prompt-chip";
+    button.innerHTML = `<i data-lucide="${item.icon}" aria-hidden="true"></i><span>${escapeHtml(item.label)}</span>`;
+    button.addEventListener("click", () => useQuickPrompt(item.prompt));
+    prompts.appendChild(button);
+  });
+
+  return welcome;
+}
+
+function useQuickPrompt(prompt) {
+  chatInput.value = prompt;
+  chatInput.focus();
+  resizeChatInput();
+}
+
+function refreshChatIcons() {
+  if (window.lucide?.createIcons) window.lucide.createIcons();
 }
 
 function appendAssistantActions(messageElement, message, index) {
@@ -983,8 +1037,17 @@ function escapeHtml(text) {
 }
 
 function setChatPending(isPending) {
-  chatForm.querySelector("button").disabled = isPending;
+  chatSubmit.disabled = isPending;
   chatInput.disabled = isPending;
+}
+
+function startNewChatSession() {
+  chatHistory = [{ role: "assistant", content: chatWelcomeMessage }];
+  chatInput.value = "";
+  resizeChatInput();
+  setChatPending(false);
+  renderChatMessages();
+  chatInput.focus();
 }
 
 async function sendChatMessage() {
@@ -1056,12 +1119,16 @@ chatClose.addEventListener("click", () => {
   setChatOpen(false);
 });
 
+newChatSession.addEventListener("click", startNewChatSession);
+
 chatForm.addEventListener("submit", handleChatSubmit);
 
-chatInput.addEventListener("input", () => {
+function resizeChatInput() {
   chatInput.style.height = "";
-  chatInput.style.height = Math.min(chatInput.scrollHeight, 96) + "px";
-});
+  chatInput.style.height = Math.min(chatInput.scrollHeight, 116) + "px";
+}
+
+chatInput.addEventListener("input", resizeChatInput);
 
 chatInput.addEventListener("keydown", (e) => {
   if (e.key !== "Enter" || e.shiftKey) return;

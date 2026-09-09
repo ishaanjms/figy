@@ -2,16 +2,19 @@ const { readJsonBody, sendJson } = require("./http");
 const { guardAIRequest } = require("./usage");
 
 const defaultHuggingFaceModel = "openai/gpt-oss-120b";
-const defaultGeminiModel = "gemini-2.5-flash";
+const defaultGeminiModel = "gemini-flash-lite-latest";
 const allowedModels = new Set([
   defaultHuggingFaceModel,
   "Qwen/Qwen3.8-2.4T-A95B",
   "deepseek-ai/DeepSeek-V4-Pro",
   defaultGeminiModel,
-  "gemini-2.0-flash"
+  "gemini-3.8-flash",
+  "gemini-3.6-flash",
+  "gemini-2.5-flash"
 ]);
 const defaultSystemPrompt = "You are Figy Assistant, a concise helper for brainstorming on a whiteboard.";
 const defaultMaxTokens = 1200;
+const defaultUpstreamTimeoutMs = 45000;
 
 async function handleChatRequest(req, res, env) {
   await guardAIRequest(req, env);
@@ -93,9 +96,24 @@ async function runChat(messages, env, model, provider, maxTokens, responseFormat
 }
 
 async function runGeminiChat(messages, env, model, maxTokens, responseFormat = "text") {
+  let lastError = null;
+
+  for (const candidateModel of getGeminiCandidates(model)) {
+    try {
+      return await requestGeminiModel(messages, env, candidateModel, maxTokens, responseFormat);
+    } catch (error) {
+      lastError = error;
+      if (!isRetryableGeminiError(error)) break;
+    }
+  }
+
+  throw lastError || new Error("Gemini request failed.");
+}
+
+async function requestGeminiModel(messages, env, model, maxTokens, responseFormat = "text") {
   const apiKey = getGeminiApiKey(env);
   const response = await fetch("https://generativelanguage.googleapis.com/v1beta/models/" + model + ":generateContent", {
-    signal: AbortSignal.timeout(15000),
+    signal: AbortSignal.timeout(getUpstreamTimeoutMs(env)),
     method: "POST",
     headers: {
       "x-goog-api-key": apiKey,
@@ -155,7 +173,7 @@ async function runHuggingFaceChat(messages, env, model, maxTokens) {
   }
 
   const response = await fetch("https://api-inference.huggingface.co/models/" + model, {
-    signal: AbortSignal.timeout(15000),
+    signal: AbortSignal.timeout(getUpstreamTimeoutMs(env)),
     method: "POST",
     headers: {
       Authorization: "Bearer " + env.HUGGINGFACE_API_KEY,
@@ -189,7 +207,7 @@ async function runHuggingFaceChat(messages, env, model, maxTokens) {
 
 async function runHuggingFaceRouterChat(messages, env, model, maxTokens) {
   const response = await fetch("https://router.huggingface.co/v1/chat/completions", {
-    signal: AbortSignal.timeout(15000),
+    signal: AbortSignal.timeout(getUpstreamTimeoutMs(env)),
     method: "POST",
     headers: {
       Authorization: "Bearer " + env.HUGGINGFACE_API_KEY,
@@ -300,7 +318,7 @@ function getHuggingFaceModel(env) {
 }
 
 function getGeminiModel(env, requestedModel = "") {
-  if (env.GEMINI_MODEL) return env.GEMINI_MODEL;
+  if (env.GEMINI_MODEL) return normalizeRequestedModel(env.GEMINI_MODEL);
   if (isGeminiModel(requestedModel)) return requestedModel;
 
   return defaultGeminiModel;
@@ -310,8 +328,9 @@ function getRequestedModel(requestedModel, env) {
   const model = typeof requestedModel === "string" && requestedModel.trim()
     ? requestedModel.trim()
     : getDefaultModel(env);
+  const normalizedModel = normalizeRequestedModel(model);
 
-  if (allowedModels.has(model) || isGeminiModel(model)) return model;
+  if (allowedModels.has(normalizedModel) || isGeminiModel(normalizedModel)) return normalizedModel;
 
   return getDefaultModel(env);
 }
@@ -342,6 +361,24 @@ function isGeminiModel(model) {
   return /^gemini-/i.test(String(model || ""));
 }
 
+function normalizeRequestedModel(model) {
+  if (model === "gemini-2.0-flash") return defaultGeminiModel;
+
+  return model;
+}
+
+function getGeminiCandidates(model) {
+  return Array.from(new Set([
+    normalizeRequestedModel(model),
+    defaultGeminiModel,
+    "gemini-2.5-flash"
+  ].filter(Boolean)));
+}
+
+function isRetryableGeminiError(error) {
+  return /high demand|temporar|timeout|abort|overload|unavailable|try again/i.test(error?.message || "");
+}
+
 function cleanReply(reply) {
   return removeDanglingMarkdown(String(reply).replace(/^Assistant:\s*/i, "").trim());
 }
@@ -350,6 +387,12 @@ function getMaxTokens(env, requestedMaxTokens) {
   const maxTokens = Number(requestedMaxTokens || env.CHAT_MAX_TOKENS);
 
   return Number.isFinite(maxTokens) ? Math.max(80, Math.min(4000, maxTokens)) : defaultMaxTokens;
+}
+
+function getUpstreamTimeoutMs(env) {
+  const timeout = Number(env.AI_UPSTREAM_TIMEOUT_MS);
+
+  return Number.isFinite(timeout) ? Math.max(5000, Math.min(50000, timeout)) : defaultUpstreamTimeoutMs;
 }
 
 function removeDanglingMarkdown(reply) {
